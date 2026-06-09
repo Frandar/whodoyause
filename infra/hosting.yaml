@@ -1,0 +1,100 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: >
+  WhoDoYaUse frontend hosting — private S3 bucket served via CloudFront with an
+  Origin Access Control (OAC). Separate stack from the backend Lambda so the
+  frontend and backend have independent lifecycles.
+
+Parameters:
+  BucketName:
+    Type: String
+    Default: whodoyause-frontend-prod
+    Description: >
+      Globally-unique S3 bucket name for the static site. Override if this name
+      is already taken.
+
+Resources:
+  # Private bucket — never public. CloudFront reaches it only via the OAC below.
+  HostingBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref BucketName
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced   # disables ACLs (recommended)
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  OriginAccessControl:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub '${BucketName}-oac'
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  Distribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: WhoDoYaUse frontend
+        DefaultRootObject: index.html
+        HttpVersion: http2and3
+        PriceClass: PriceClass_100          # cheapest: US / Canada / Europe edges
+        Origins:
+          - Id: S3Origin
+            DomainName: !GetAtt HostingBucket.RegionalDomainName
+            OriginAccessControlId: !GetAtt OriginAccessControl.Id
+            S3OriginConfig:
+              OriginAccessIdentity: ''       # empty when using OAC (not legacy OAI)
+        DefaultCacheBehavior:
+          TargetOriginId: S3Origin
+          ViewerProtocolPolicy: redirect-to-https
+          Compress: true
+          AllowedMethods: [GET, HEAD]
+          CachedMethods: [GET, HEAD]
+          # Managed "CachingOptimized" policy.
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+        # SPA fallback: a private S3 bucket returns 403 for any missing key, so
+        # serve index.html (200) for unknown paths. Harmless for M1's single page.
+        CustomErrorResponses:
+          - ErrorCode: 403
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+            ErrorCachingMinTTL: 10
+        ViewerCertificate:
+          CloudFrontDefaultCertificate: true
+
+  # Grant CloudFront (this distribution only) read access to the bucket.
+  HostingBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref HostingBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowCloudFrontOACRead
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: s3:GetObject
+            Resource: !Sub '${HostingBucket.Arn}/*'
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub 'arn:aws:cloudfront::${AWS::AccountId}:distribution/${Distribution.Id}'
+
+Outputs:
+  BucketName:
+    Description: S3 bucket name — pass as BUCKET to scripts/deploy.sh
+    Value: !Ref HostingBucket
+  DistributionId:
+    Description: CloudFront distribution ID — pass as DIST_ID to scripts/deploy.sh
+    Value: !Ref Distribution
+  CloudFrontUrl:
+    Description: Frontend URL — use as the Lambda CorsAllowOrigin and NEXT_PUBLIC site URL
+    Value: !Sub 'https://${Distribution.DomainName}'

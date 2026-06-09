@@ -1,0 +1,23 @@
+# Python / uv
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+*.egg-info/
+.uv/
+
+# SAM / AWS
+backend/.aws-sam/
+samconfig.toml
+
+# Node / Next.js
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/.env.local
+frontend/.env.*.local
+
+# General
+.env
+.env.local
+.DS_Store

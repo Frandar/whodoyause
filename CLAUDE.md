@@ -54,8 +54,21 @@ Milestone 1 — walking skeleton. No product features. See docs/MILESTONE_1.md.
 - Milestone plan + gates: @docs/MILESTONES.md
 - Current milestone spec: @docs/MILESTONE_1.md
 
+## Tooling
+
+- Python: managed by **uv** (`pyproject.toml` is the source of truth). Run `uv sync` in
+  `backend/` to create/update the venv. Python version pinned in `backend/.python-version`.
+- Frontend: managed by **pnpm**. Run `pnpm install` in `frontend/`.
+- SAM build uses `backend/requirements.txt` (auto-generated — do NOT edit by hand).
+  Regenerate it with: `cd backend && uv export --no-hashes --no-dev -o requirements.txt`
+- Lambda is **arm64**. `psycopg-binary` is a compiled C extension, so the build MUST run
+  in a Lambda-like Linux container (`sam build --use-container`) — a plain `sam build` on
+  macOS packages Mac wheels that fail at runtime. **Docker must be running** to deploy.
+
 ## Commands
 
-- Backend tests: cd backend && PYTHONPATH=. pytest
-- Backend deploy: cd backend && sam build && sam deploy
+- Backend tests: cd backend && uv run pytest
+- Backend deploy: cd backend && uv export --no-hashes --no-dev -o requirements.txt && sam build --use-container && sam deploy
+- Provision frontend hosting (once): aws cloudformation deploy --template-file infra/hosting.yaml --stack-name whodoyause-hosting
+- Frontend dev: cd frontend && pnpm dev
 - Frontend deploy: BUCKET=... DIST_ID=... ./scripts/deploy.sh

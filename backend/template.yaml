@@ -1,0 +1,77 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+
+Description: Neighborhood Recommendations Platform — Lambda backend
+
+Globals:
+  Function:
+    Runtime: python3.14
+    Architectures:
+      - arm64
+    MemorySize: 256
+    Timeout: 10
+    Environment:
+      Variables:
+        DATABASE_URL: !Ref DatabaseUrl
+        SUPABASE_URL: !Ref SupabaseUrl
+        CORS_ALLOW_ORIGIN: !Ref CorsAllowOrigin
+
+Parameters:
+  DatabaseUrl:
+    Type: String
+    Description: Supabase pooler connection string (port 6543, transaction mode)
+    NoEcho: true
+  SupabaseUrl:
+    Type: String
+    Description: Supabase project URL (e.g. https://xxxx.supabase.co)
+  CorsAllowOrigin:
+    Type: String
+    Description: CloudFront distribution URL (e.g. https://dxxxx.cloudfront.net)
+
+Resources:
+  ApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: whodoyause-api
+      CodeUri: .
+      Handler: src.handler.lambda_handler
+      FunctionUrlConfig:
+        AuthType: NONE
+        Cors:
+          AllowCredentials: false
+          AllowHeaders:
+            - Authorization
+            - Content-Type
+          # NOTE: Lambda Function URL CORS does not accept OPTIONS here — preflight
+          # is handled automatically by AWS. Listing OPTIONS fails CloudFormation
+          # early validation. Valid values: GET, HEAD, POST, PUT, PATCH, DELETE, *.
+          AllowMethods:
+            - GET
+            - POST
+            - DELETE
+          AllowOrigins:
+            - !Ref CorsAllowOrigin
+      Policies:
+        - CloudWatchLogsFullAccess
+
+  ApiErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: whodoyause-api-errors
+      AlarmDescription: Lambda function error rate >= 1 over 5 minutes
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref ApiFunction
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+
+Outputs:
+  FunctionUrl:
+    Description: Lambda Function URL (use as NEXT_PUBLIC_API_BASE)
+    Value: !GetAtt ApiFunctionUrl.FunctionUrl
