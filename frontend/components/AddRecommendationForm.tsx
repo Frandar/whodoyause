@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { CATEGORIES } from '@/lib/categories';
-import { addRecommendation } from '@/lib/api';
+import { addRecommendation, endorse } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -44,8 +44,26 @@ export default function AddRecommendationForm({ onAdded }: { onAdded?: () => voi
       setNote('');
       onAdded?.();
     } else if (result.kind === 'duplicate') {
+      const existingId = result.existingId;
       toast.info('Already recommended', {
         description: `${name} is already listed under ${category}.`,
+        action: existingId
+          ? {
+              label: '+1 it instead',
+              onClick: async () => {
+                const r = await endorse(existingId);
+                if (r.ok) {
+                  toast.success('Thanks for the +1');
+                  onAdded?.();
+                } else if (r.kind === 'already') {
+                  toast.success("You already +1'd this");
+                  onAdded?.();
+                } else {
+                  toast.error("Couldn't +1");
+                }
+              },
+            }
+          : undefined,
       });
     } else if (result.kind === 'unauthenticated') {
       toast.error('Please sign in again', { description: 'Your session expired.' });

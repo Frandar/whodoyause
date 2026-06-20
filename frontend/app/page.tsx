@@ -146,7 +146,7 @@ export default function Home() {
                 <Skeleton key={i} className="h-28 w-full rounded-2xl" />
               ))
             ) : results.length > 0 ? (
-              results.map((r) => <RecommendationCard key={r.id} rec={r} />)
+              results.map((r) => <RecommendationCard key={r.id} rec={r} signedIn={!!email} />)
             ) : mode === 'search' ? (
               <p className="text-sm text-muted-foreground">
                 Try a category above, or sign in to add the first recommendation for “{query}”.

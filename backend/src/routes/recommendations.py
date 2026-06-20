@@ -1,3 +1,5 @@
+import uuid
+
 import psycopg
 
 from src import db
@@ -26,6 +28,15 @@ def _require_str(body: dict, key: str) -> str:
     return value.strip()
 
 
+def _ensure_app_user(conn, claims: dict) -> None:
+    """Just-in-time provisioning so writes can reference app_user.id."""
+    conn.execute(
+        "insert into app_user (id, display_name) values (%s, %s) "
+        "on conflict (id) do nothing",
+        (claims["sub"], _display_name(claims)),
+    )
+
+
 def create(claims: dict, body: dict) -> dict:
     """Create a recommendation. Returns {statusCode, body}.
 
@@ -50,12 +61,7 @@ def create(claims: dict, body: dict) -> dict:
     display_name = _display_name(claims)
 
     with db.get_connection() as conn:
-        # Just-in-time user provisioning (recommendation.created_by → app_user.id).
-        conn.execute(
-            "insert into app_user (id, display_name) values (%s, %s) "
-            "on conflict (id) do nothing",
-            (user_id, display_name),
-        )
+        _ensure_app_user(conn, claims)
         try:
             row = conn.execute(
                 "insert into recommendation (business_name, category, note, created_by) "
@@ -166,3 +172,74 @@ def search(query: str, category: str | None = None) -> dict:
         print(f"ZERO_RESULTS query={query!r} category={category!r}", flush=True)
 
     return {"statusCode": 200, "body": [_to_summary(r) for r in rows]}
+
+
+def _is_uuid(value: str) -> bool:
+    try:
+        uuid.UUID(str(value))
+        return True
+    except (ValueError, AttributeError, TypeError):
+        return False
+
+
+def _endorsement_count(conn, recommendation_id: str) -> int:
+    # endorsement_count is maintained by a DB trigger; in autocommit mode the
+    # trigger's update is committed before we read it back.
+    row = conn.execute(
+        "select endorsement_count from recommendation where id = %s",
+        (recommendation_id,),
+    ).fetchone()
+    return row[0] if row else 0
+
+
+def endorse(claims: dict, recommendation_id: str) -> dict:
+    """+1 a recommendation (US3). One per user via the endorsement unique
+    constraint — on a violation we return 409 (no check-then-insert)."""
+    if not _is_uuid(recommendation_id):
+        return {"statusCode": 404, "body": {"error": {"code": "not_found", "message": "Recommendation not found"}}}
+
+    with db.get_connection() as conn:
+        _ensure_app_user(conn, claims)
+        try:
+            conn.execute(
+                "insert into endorsement (recommendation_id, user_id) values (%s, %s)",
+                (recommendation_id, claims["sub"]),
+            )
+        except psycopg.errors.UniqueViolation:
+            return {
+                "statusCode": 409,
+                "body": {
+                    "error": {"code": "already_endorsed", "message": "You already +1'd this"},
+                    "recommendation_id": recommendation_id,
+                    "endorsement_count": _endorsement_count(conn, recommendation_id),
+                },
+            }
+        except psycopg.errors.ForeignKeyViolation:
+            return {"statusCode": 404, "body": {"error": {"code": "not_found", "message": "Recommendation not found"}}}
+
+        return {
+            "statusCode": 200,
+            "body": {
+                "recommendation_id": recommendation_id,
+                "endorsement_count": _endorsement_count(conn, recommendation_id),
+            },
+        }
+
+
+def unendorse(claims: dict, recommendation_id: str) -> dict:
+    """Remove a +1 (US3, optional). Idempotent."""
+    if not _is_uuid(recommendation_id):
+        return {"statusCode": 404, "body": {"error": {"code": "not_found", "message": "Recommendation not found"}}}
+
+    with db.get_connection() as conn:
+        conn.execute(
+            "delete from endorsement where recommendation_id = %s and user_id = %s",
+            (recommendation_id, claims["sub"]),
+        )
+        return {
+            "statusCode": 200,
+            "body": {
+                "recommendation_id": recommendation_id,
+                "endorsement_count": _endorsement_count(conn, recommendation_id),
+            },
+        }

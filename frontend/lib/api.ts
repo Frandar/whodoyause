@@ -63,6 +63,31 @@ export async function searchRecommendations(
   return res.json();
 }
 
+export type EndorseResult =
+  | { ok: true; count: number }
+  | { ok: false; kind: 'already'; count: number }
+  | { ok: false; kind: 'unauthenticated' }
+  | { ok: false; kind: 'error' };
+
+export async function endorse(id: string): Promise<EndorseResult> {
+  const headers = await authHeader();
+  const res = await fetch(`${API_BASE}/recommendations/${id}/endorse`, { method: 'POST', headers });
+  if (res.ok) return { ok: true, count: (await res.json()).endorsement_count };
+  if (res.status === 409) {
+    const body = await res.json().catch(() => ({}));
+    return { ok: false, kind: 'already', count: body?.endorsement_count ?? 0 };
+  }
+  if (res.status === 401) return { ok: false, kind: 'unauthenticated' };
+  return { ok: false, kind: 'error' };
+}
+
+export async function unendorse(id: string): Promise<{ ok: boolean; count: number }> {
+  const headers = await authHeader();
+  const res = await fetch(`${API_BASE}/recommendations/${id}/endorse`, { method: 'DELETE', headers });
+  if (res.ok) return { ok: true, count: (await res.json()).endorsement_count };
+  return { ok: false, count: 0 };
+}
+
 export async function addRecommendation(input: {
   business_name: string;
   category: string;

@@ -96,6 +96,18 @@ def lambda_handler(event: dict, _context) -> dict:
                 return _response(400, {"error": {"code": "invalid_input", "message": str(exc)}})
             return _response(result["statusCode"], result["body"])
 
+        # POST/DELETE /recommendations/{id}/endorse
+        segments = path.strip("/").split("/")
+        if len(segments) == 3 and segments[0] == "recommendations" and segments[2] == "endorse":
+            if method in ("POST", "DELETE"):
+                claims = verify_token(_auth_header(event))
+                rec_id = segments[1]
+                if method == "POST":
+                    result = recommendations.endorse(claims, rec_id)
+                else:
+                    result = recommendations.unendorse(claims, rec_id)
+                return _response(result["statusCode"], result["body"])
+
         return _response(404, {"error": {"code": "not_found", "message": "Route not found"}})
 
     except AuthError:
