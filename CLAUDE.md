@@ -45,7 +45,9 @@ Optimize for LEARNING SPEED and MAINTAINABILITY, not technical elegance.
 
 ## Current milestone
 
-Milestone 1 — walking skeleton. No product features. See docs/MILESTONE_1.md.
+Milestone 2 — core MVP features (add, search, browse, endorse; US1–US5).
+See docs/MILESTONES.md §"Milestone 2". M1 (walking skeleton) is complete:
+Gate 1 passed and deployed.
 
 ## Reference docs
 
@@ -53,6 +55,7 @@ Milestone 1 — walking skeleton. No product features. See docs/MILESTONE_1.md.
 - Locked architecture, schema, API, security: @docs/ARCHITECTURE.md
 - Milestone plan + gates: @docs/MILESTONES.md
 - Current milestone spec: @docs/MILESTONE_1.md
+- Frontend design system (Fresha-inspired, shadcn + Tailwind): @docs/FRONTEND.md
 
 ## Tooling
 
