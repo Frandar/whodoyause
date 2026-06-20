@@ -188,3 +188,155 @@ def test_get_recommendations_is_public():
         resp = lambda_handler(event, None)
     assert resp["statusCode"] == 200
     assert json.loads(resp["body"]) == []
+
+
+# --- search (US1) ---
+
+def test_search_empty_query_raises():
+    with pytest.raises(rec.InvalidInput):
+        rec.search("   ")
+
+
+def test_search_query_too_long_raises():
+    with pytest.raises(rec.InvalidInput):
+        rec.search("x" * 200)
+
+
+def test_search_unknown_category_raises():
+    with pytest.raises(rec.InvalidInput):
+        rec.search("plumber", "Wizardry")
+
+
+def test_search_uses_websearch_tsquery_and_ranks():
+    rows = [("a", "Ace Plumbing", "Plumber", None, 4, "Mike")]
+    captured = {}
+    def execute_fn(sql, params):
+        captured["sql"] = sql
+        captured["params"] = params
+        return _Cursor(rows=rows)
+    with patch.object(rec.db, "get_connection", return_value=_Conn(execute_fn)):
+        result = rec.search("plumber")
+    assert "websearch_to_tsquery('english', %s)" in captured["sql"]
+    assert "order by r.endorsement_count desc" in captured["sql"]
+    assert captured["params"] == ("plumber",)  # bound param, not interpolated
+    assert result["body"][0]["business_name"] == "Ace Plumbing"
+
+
+def test_search_with_category_filter():
+    def execute_fn(sql, params):
+        assert "and r.category = %s" in sql
+        assert params == ("plumber", "Plumber")
+        return _Cursor(rows=[])
+    with patch.object(rec.db, "get_connection", return_value=_Conn(execute_fn)):
+        rec.search("plumber", "Plumber")
+
+
+def test_search_zero_results_logs_content_gap(capsys):
+    def execute_fn(sql, params):
+        return _Cursor(rows=[])
+    with patch.object(rec.db, "get_connection", return_value=_Conn(execute_fn)):
+        result = rec.search("nonexistent biz")
+    assert result["body"] == []
+    assert "ZERO_RESULTS" in capsys.readouterr().out
+
+
+def test_search_handler_without_q_returns_400():
+    resp = lambda_handler(_event("GET", "/recommendations/search"), None)
+    assert resp["statusCode"] == 400
+
+
+def test_search_handler_is_public():
+    def execute_fn(sql, params):
+        return _Cursor(rows=[])
+    event = _event("GET", "/recommendations/search")
+    event["queryStringParameters"] = {"q": "plumber"}
+    with patch.object(rec.db, "get_connection", return_value=_Conn(execute_fn)):
+        resp = lambda_handler(event, None)
+    assert resp["statusCode"] == 200
+
+
+# --- endorse (US3) ---
+
+VALID_ID = "44444444-4444-4444-4444-444444444444"
+
+
+def test_endorse_invalid_uuid_returns_404():
+    result = rec.endorse(CLAIMS, "not-a-uuid")
+    assert result["statusCode"] == 404
+
+
+def test_endorse_success_returns_new_count():
+    def execute_fn(sql, params):
+        if "insert into app_user" in sql:
+            return _Cursor(None)
+        if "insert into endorsement" in sql:
+            return _Cursor(None)
+        if "select endorsement_count" in sql:
+            return _Cursor(row=(1,))
+        raise AssertionError(sql)
+    with patch.object(rec.db, "get_connection", return_value=_Conn(execute_fn)):
+        result = rec.endorse(CLAIMS, VALID_ID)
+    assert result["statusCode"] == 200
+    assert result["body"] == {"recommendation_id": VALID_ID, "endorsement_count": 1}
+
+
+def test_endorse_twice_returns_409():
+    def execute_fn(sql, params):
+        if "insert into app_user" in sql:
+            return _Cursor(None)
+        if "insert into endorsement" in sql:
+            raise psycopg.errors.UniqueViolation()
+        if "select endorsement_count" in sql:
+            return _Cursor(row=(3,))
+        raise AssertionError(sql)
+    with patch.object(rec.db, "get_connection", return_value=_Conn(execute_fn)):
+        result = rec.endorse(CLAIMS, VALID_ID)
+    assert result["statusCode"] == 409
+    assert result["body"]["endorsement_count"] == 3
+    assert result["body"]["error"]["code"] == "already_endorsed"
+
+
+def test_endorse_missing_recommendation_returns_404():
+    def execute_fn(sql, params):
+        if "insert into app_user" in sql:
+            return _Cursor(None)
+        if "insert into endorsement" in sql:
+            raise psycopg.errors.ForeignKeyViolation()
+        raise AssertionError(sql)
+    with patch.object(rec.db, "get_connection", return_value=_Conn(execute_fn)):
+        result = rec.endorse(CLAIMS, VALID_ID)
+    assert result["statusCode"] == 404
+
+
+def test_unendorse_returns_decremented_count():
+    def execute_fn(sql, params):
+        if "delete from endorsement" in sql:
+            return _Cursor(None)
+        if "select endorsement_count" in sql:
+            return _Cursor(row=(0,))
+        raise AssertionError(sql)
+    with patch.object(rec.db, "get_connection", return_value=_Conn(execute_fn)):
+        result = rec.unendorse(CLAIMS, VALID_ID)
+    assert result["statusCode"] == 200
+    assert result["body"]["endorsement_count"] == 0
+
+
+def test_endorse_requires_auth():
+    resp = lambda_handler(_event("POST", f"/recommendations/{VALID_ID}/endorse"), None)
+    assert resp["statusCode"] == 401
+
+
+def test_endorse_route_dispatches_with_auth():
+    def execute_fn(sql, params):
+        if "insert into app_user" in sql:
+            return _Cursor(None)
+        if "insert into endorsement" in sql:
+            return _Cursor(None)
+        if "select endorsement_count" in sql:
+            return _Cursor(row=(1,))
+        raise AssertionError(sql)
+    with patch("src.handler.verify_token", return_value=CLAIMS), \
+         patch.object(rec.db, "get_connection", return_value=_Conn(execute_fn)):
+        resp = lambda_handler(_event("POST", f"/recommendations/{VALID_ID}/endorse", headers={"authorization": "Bearer ok"}), None)
+    assert resp["statusCode"] == 200
+    assert json.loads(resp["body"])["endorsement_count"] == 1

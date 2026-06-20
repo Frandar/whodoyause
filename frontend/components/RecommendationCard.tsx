@@ -1,9 +1,56 @@
+'use client';
+
+import { useState } from 'react';
 import { ThumbsUp, User } from 'lucide-react';
+import { toast } from 'sonner';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import type { Recommendation } from '@/lib/api';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
+import { endorse, unendorse, type Recommendation } from '@/lib/api';
 
-export function RecommendationCard({ rec }: { rec: Recommendation }) {
+export function RecommendationCard({
+  rec,
+  signedIn,
+}: {
+  rec: Recommendation;
+  signedIn: boolean;
+}) {
+  const [count, setCount] = useState(rec.endorsement_count);
+  const [endorsed, setEndorsed] = useState(false);
+  const [pending, setPending] = useState(false);
+
+  async function toggle() {
+    if (!signedIn) {
+      toast.info('Sign in to +1 a recommendation');
+      return;
+    }
+    setPending(true);
+    if (!endorsed) {
+      const r = await endorse(rec.id);
+      if (r.ok) {
+        setCount(r.count);
+        setEndorsed(true);
+      } else if (r.kind === 'already') {
+        setCount(r.count);
+        setEndorsed(true);
+      } else if (r.kind === 'unauthenticated') {
+        toast.error('Please sign in again');
+      } else {
+        toast.error("Couldn't +1");
+      }
+    } else {
+      const r = await unendorse(rec.id);
+      if (r.ok) {
+        setCount(r.count);
+        setEndorsed(false);
+      } else {
+        toast.error("Couldn't undo your +1");
+      }
+    }
+    setPending(false);
+  }
+
   return (
     <Card className="rounded-2xl shadow-sm">
       <CardContent className="flex flex-col gap-2 p-4">
@@ -16,16 +63,25 @@ export function RecommendationCard({ rec }: { rec: Recommendation }) {
 
         {rec.note && <p className="text-sm text-muted-foreground">{rec.note}</p>}
 
-        <div className="flex items-center justify-between text-sm text-muted-foreground">
+        <div className="flex items-center justify-between gap-3 text-sm text-muted-foreground">
           <span className="inline-flex items-center gap-1.5">
             <User className="size-3.5" aria-hidden />
             {rec.created_by_name}
           </span>
-          <span className="inline-flex items-center gap-1.5 font-medium text-foreground">
-            <ThumbsUp className="size-3.5" aria-hidden />
-            {rec.endorsement_count}
-            <span className="sr-only"> endorsements</span>
-          </span>
+
+          <Button
+            type="button"
+            variant={endorsed ? 'default' : 'outline'}
+            size="sm"
+            onClick={toggle}
+            disabled={pending}
+            aria-pressed={endorsed}
+            aria-label={endorsed ? 'Remove your +1' : '+1 this recommendation'}
+            className="h-8 rounded-full"
+          >
+            <ThumbsUp className={cn('size-3.5', endorsed && 'fill-current')} aria-hidden />
+            {count}
+          </Button>
         </div>
       </CardContent>
     </Card>

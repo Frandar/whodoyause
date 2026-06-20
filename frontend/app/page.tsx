@@ -6,10 +6,12 @@ import { getSupabase } from '@/lib/supabase';
 import {
   getCategoryCounts,
   getRecommendations,
+  searchRecommendations,
   type CategoryCount,
   type Recommendation,
 } from '@/lib/api';
 import AddRecommendationForm from '@/components/AddRecommendationForm';
+import { SearchHero } from '@/components/SearchHero';
 import { CategoryChips } from '@/components/CategoryChips';
 import { RecommendationCard } from '@/components/RecommendationCard';
 import { Button } from '@/components/ui/button';
@@ -17,6 +19,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+
+type Mode = 'search' | 'browse' | null;
 
 export default function Home() {
   // auth
@@ -26,23 +30,38 @@ export default function Home() {
   const [magicLinkSent, setMagicLinkSent] = useState(false);
   const [sending, setSending] = useState(false);
 
-  // browse
+  // discovery (search + browse share one results list)
   const [categories, setCategories] = useState<CategoryCount[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
-  const [recs, setRecs] = useState<Recommendation[]>([]);
-  const [loadingRecs, setLoadingRecs] = useState(false);
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<Recommendation[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [mode, setMode] = useState<Mode>(null);
 
   const refreshCategories = useCallback(() => {
     getCategoryCounts().then(setCategories).catch(() => {});
   }, []);
 
   const loadCategory = useCallback((category: string) => {
+    setMode('browse');
     setSelected(category);
-    setLoadingRecs(true);
+    setQuery('');
+    setLoading(true);
     getRecommendations(category)
-      .then(setRecs)
+      .then(setResults)
       .catch(() => toast.error("Couldn't load recommendations"))
-      .finally(() => setLoadingRecs(false));
+      .finally(() => setLoading(false));
+  }, []);
+
+  const runSearch = useCallback((q: string) => {
+    setMode('search');
+    setQuery(q);
+    setSelected(null);
+    setLoading(true);
+    searchRecommendations(q)
+      .then(setResults)
+      .catch(() => toast.error('Search failed'))
+      .finally(() => setLoading(false));
   }, []);
 
   useEffect(() => {
@@ -60,7 +79,8 @@ export default function Home() {
 
   function onAdded() {
     refreshCategories();
-    if (selected) loadCategory(selected);
+    if (mode === 'search' && query) runSearch(query);
+    else if (mode === 'browse' && selected) loadCategory(selected);
   }
 
   async function signIn(e: React.FormEvent) {
@@ -87,14 +107,9 @@ export default function Home() {
   }
 
   return (
-    <main className="mx-auto flex w-full max-w-[680px] flex-col gap-10 px-4 py-8 sm:py-10">
-      <header className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">WhoDoYaUse</h1>
-          <p className="mt-0.5 text-sm text-muted-foreground">
-            Trusted local pros, recommended by your neighbors.
-          </p>
-        </div>
+    <main className="mx-auto flex w-full max-w-[680px] flex-col gap-8 px-4 py-6 sm:py-8">
+      <header className="flex items-center justify-between gap-4">
+        <h1 className="text-xl font-bold tracking-tight">WhoDoYaUse</h1>
         {email && (
           <Button variant="ghost" size="sm" onClick={signOut}>
             Sign out
@@ -102,10 +117,10 @@ export default function Home() {
         )}
       </header>
 
-      {/* Browse — public */}
-      <section className="flex flex-col gap-4">
-        <h2 className="text-lg font-semibold">Browse by category</h2>
+      <SearchHero onSearch={runSearch} />
 
+      {/* Discovery — public */}
+      <section className="flex flex-col gap-4">
         {categories.length === 0 ? (
           <div className="flex flex-wrap gap-2">
             {Array.from({ length: 6 }).map((_, i) => (
@@ -116,14 +131,26 @@ export default function Home() {
           <CategoryChips items={categories} selected={selected} onSelect={loadCategory} />
         )}
 
-        {selected ? (
+        {mode === 'search' && !loading && (
+          <p className="text-sm text-muted-foreground">
+            {results.length > 0
+              ? `Results for “${query}”`
+              : `No matches for “${query}”`}
+          </p>
+        )}
+
+        {mode ? (
           <div className="flex flex-col gap-3">
-            {loadingRecs ? (
+            {loading ? (
               Array.from({ length: 3 }).map((_, i) => (
                 <Skeleton key={i} className="h-28 w-full rounded-2xl" />
               ))
-            ) : recs.length > 0 ? (
-              recs.map((r) => <RecommendationCard key={r.id} rec={r} />)
+            ) : results.length > 0 ? (
+              results.map((r) => <RecommendationCard key={r.id} rec={r} signedIn={!!email} />)
+            ) : mode === 'search' ? (
+              <p className="text-sm text-muted-foreground">
+                Try a category above, or sign in to add the first recommendation for “{query}”.
+              </p>
             ) : (
               <p className="text-sm text-muted-foreground">
                 No recommendations for {selected} yet — be the first to add one.
@@ -131,14 +158,14 @@ export default function Home() {
             )}
           </div>
         ) : (
-          <p className="text-sm text-muted-foreground">
-            Pick a category to see what your neighbors recommend.
+          <p className="text-center text-sm text-muted-foreground">
+            Search above or pick a category to see what your neighbors recommend.
           </p>
         )}
       </section>
 
       {/* Add — requires sign-in */}
-      <section className="flex flex-col gap-4">
+      <section className="flex flex-col gap-4 border-t pt-8">
         {loadingSession ? (
           <Skeleton className="h-56 w-full rounded-2xl" />
         ) : email ? (
