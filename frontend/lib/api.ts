@@ -52,6 +52,17 @@ export async function getRecommendations(category: string): Promise<Recommendati
   return res.json();
 }
 
+export async function searchRecommendations(
+  query: string,
+  category?: string,
+): Promise<Recommendation[]> {
+  const params = new URLSearchParams({ q: query });
+  if (category) params.set('category', category);
+  const res = await fetch(`${API_BASE}/recommendations/search?${params.toString()}`);
+  if (!res.ok) throw new Error('Search failed');
+  return res.json();
+}
+
 export async function addRecommendation(input: {
   business_name: string;
   category: string;

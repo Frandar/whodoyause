@@ -62,6 +62,17 @@ def lambda_handler(event: dict, _context) -> dict:
             result = recommendations.category_counts()
             return _response(result["statusCode"], result["body"])
 
+        if method == "GET" and path == "/recommendations/search":
+            params = event.get("queryStringParameters") or {}
+            query = params.get("q")
+            if not query:
+                return _response(400, {"error": {"code": "invalid_input", "message": "q is required"}})
+            try:
+                result = recommendations.search(query, params.get("category"))
+            except recommendations.InvalidInput as exc:
+                return _response(400, {"error": {"code": "invalid_input", "message": str(exc)}})
+            return _response(result["statusCode"], result["body"])
+
         if method == "GET" and path == "/recommendations":
             params = event.get("queryStringParameters") or {}
             category = params.get("category")

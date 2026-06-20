@@ -188,3 +188,68 @@ def test_get_recommendations_is_public():
         resp = lambda_handler(event, None)
     assert resp["statusCode"] == 200
     assert json.loads(resp["body"]) == []
+
+
+# --- search (US1) ---
+
+def test_search_empty_query_raises():
+    with pytest.raises(rec.InvalidInput):
+        rec.search("   ")
+
+
+def test_search_query_too_long_raises():
+    with pytest.raises(rec.InvalidInput):
+        rec.search("x" * 200)
+
+
+def test_search_unknown_category_raises():
+    with pytest.raises(rec.InvalidInput):
+        rec.search("plumber", "Wizardry")
+
+
+def test_search_uses_websearch_tsquery_and_ranks():
+    rows = [("a", "Ace Plumbing", "Plumber", None, 4, "Mike")]
+    captured = {}
+    def execute_fn(sql, params):
+        captured["sql"] = sql
+        captured["params"] = params
+        return _Cursor(rows=rows)
+    with patch.object(rec.db, "get_connection", return_value=_Conn(execute_fn)):
+        result = rec.search("plumber")
+    assert "websearch_to_tsquery('english', %s)" in captured["sql"]
+    assert "order by r.endorsement_count desc" in captured["sql"]
+    assert captured["params"] == ("plumber",)  # bound param, not interpolated
+    assert result["body"][0]["business_name"] == "Ace Plumbing"
+
+
+def test_search_with_category_filter():
+    def execute_fn(sql, params):
+        assert "and r.category = %s" in sql
+        assert params == ("plumber", "Plumber")
+        return _Cursor(rows=[])
+    with patch.object(rec.db, "get_connection", return_value=_Conn(execute_fn)):
+        rec.search("plumber", "Plumber")
+
+
+def test_search_zero_results_logs_content_gap(capsys):
+    def execute_fn(sql, params):
+        return _Cursor(rows=[])
+    with patch.object(rec.db, "get_connection", return_value=_Conn(execute_fn)):
+        result = rec.search("nonexistent biz")
+    assert result["body"] == []
+    assert "ZERO_RESULTS" in capsys.readouterr().out
+
+
+def test_search_handler_without_q_returns_400():
+    resp = lambda_handler(_event("GET", "/recommendations/search"), None)
+    assert resp["statusCode"] == 400
+
+
+def test_search_handler_is_public():
+    def execute_fn(sql, params):
+        return _Cursor(rows=[])
+    event = _event("GET", "/recommendations/search")
+    event["queryStringParameters"] = {"q": "plumber"}
+    with patch.object(rec.db, "get_connection", return_value=_Conn(execute_fn)):
+        resp = lambda_handler(event, None)
+    assert resp["statusCode"] == 200

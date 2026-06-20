@@ -5,6 +5,7 @@ from src.categories import CATEGORIES, CATEGORY_SET
 
 BUSINESS_NAME_MAX = 200
 NOTE_MAX = 1000
+QUERY_MAX = 100
 
 
 class InvalidInput(Exception):
@@ -136,3 +137,32 @@ def category_counts() -> dict:
         "statusCode": 200,
         "body": [{"category": c, "count": counts.get(c, 0)} for c in CATEGORIES],
     }
+
+
+def search(query: str, category: str | None = None) -> dict:
+    """Public full-text search (US1). Uses websearch_to_tsquery with a bound
+    param (never string-interpolated), ranked by endorsements. Zero-result
+    queries are logged server-side as a content-gap signal."""
+    query = (query or "").strip()
+    if not query:
+        raise InvalidInput("q is required")
+    if len(query) > QUERY_MAX:
+        raise InvalidInput("q is too long")
+    if category is not None and category not in CATEGORY_SET:
+        raise InvalidInput("unknown category")
+
+    sql = _LIST_SELECT + " where r.search_vector @@ websearch_to_tsquery('english', %s)"
+    params: list = [query]
+    if category:
+        sql += " and r.category = %s"
+        params.append(category)
+    sql += " order by r.endorsement_count desc, r.created_at desc"
+
+    with db.get_connection() as conn:
+        rows = conn.execute(sql, tuple(params)).fetchall()
+
+    if not rows:
+        # Content-gap signal (US1) — surfaced in CloudWatch.
+        print(f"ZERO_RESULTS query={query!r} category={category!r}", flush=True)
+
+    return {"statusCode": 200, "body": [_to_summary(r) for r in rows]}
