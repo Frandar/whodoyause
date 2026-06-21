@@ -9,18 +9,6 @@ async function authHeader(): Promise<Record<string, string>> {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
-export async function getHealth(): Promise<{ status: string; db: boolean }> {
-  const res = await fetch(`${API_BASE}/health`);
-  return res.json();
-}
-
-export async function whoami(): Promise<{ user_id: string }> {
-  const headers = await authHeader();
-  const res = await fetch(`${API_BASE}/whoami`, { headers });
-  if (!res.ok) throw new Error('Not authenticated');
-  return res.json();
-}
-
 export type Recommendation = {
   id: string;
   business_name: string;
@@ -28,7 +16,10 @@ export type Recommendation = {
   note: string | null;
   endorsement_count: number;
   created_by_name: string;
-  created_at: string;
+  // True when the signed-in viewer has already +1'd this. Always false for
+  // anonymous reads (the backend only computes it when a valid JWT is sent).
+  endorsed_by_me: boolean;
+  created_at?: string;
 };
 
 export type AddResult =
@@ -47,7 +38,12 @@ export async function getCategoryCounts(): Promise<CategoryCount[]> {
 }
 
 export async function getRecommendations(category: string): Promise<Recommendation[]> {
-  const res = await fetch(`${API_BASE}/recommendations?category=${encodeURIComponent(category)}`);
+  // Public, but send the JWT when present so the backend can fill endorsed_by_me.
+  const headers = await authHeader();
+  const res = await fetch(
+    `${API_BASE}/recommendations?category=${encodeURIComponent(category)}`,
+    { headers },
+  );
   if (!res.ok) throw new Error('Failed to load recommendations');
   return res.json();
 }
@@ -58,7 +54,9 @@ export async function searchRecommendations(
 ): Promise<Recommendation[]> {
   const params = new URLSearchParams({ q: query });
   if (category) params.set('category', category);
-  const res = await fetch(`${API_BASE}/recommendations/search?${params.toString()}`);
+  // Public, but send the JWT when present so the backend can fill endorsed_by_me.
+  const headers = await authHeader();
+  const res = await fetch(`${API_BASE}/recommendations/search?${params.toString()}`, { headers });
   if (!res.ok) throw new Error('Search failed');
   return res.json();
 }
