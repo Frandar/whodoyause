@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { Plus_Jakarta_Sans } from 'next/font/google';
+import { Plus_Jakarta_Sans, Bricolage_Grotesque } from 'next/font/google';
 import { Toaster } from '@/components/ui/sonner';
 import { AnalyticsProvider } from '@/components/AnalyticsProvider';
 import { AuthProvider } from '@/components/AuthProvider';
@@ -12,14 +12,21 @@ const jakarta = Plus_Jakarta_Sans({
   display: 'swap',
 });
 
+const bricolage = Bricolage_Grotesque({
+  subsets: ['latin'],
+  variable: '--font-bricolage',
+  display: 'swap',
+  weight: ['400', '500', '600', '700', '800'],
+});
+
 export const metadata: Metadata = {
   title: 'WhoDoYaUse',
-  description: 'Trusted local business recommendations from your neighbors.',
+  description: 'Good help, recommended by the people next door.',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={jakarta.variable}>
+    <html lang="en" className={`${jakarta.variable} ${bricolage.variable}`}>
       <body className="min-h-dvh bg-background text-foreground antialiased">
         <AnalyticsProvider />
         <AuthProvider>
