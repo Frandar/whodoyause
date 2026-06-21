@@ -2,6 +2,8 @@ import type { Metadata } from 'next';
 import { Plus_Jakarta_Sans } from 'next/font/google';
 import { Toaster } from '@/components/ui/sonner';
 import { AnalyticsProvider } from '@/components/AnalyticsProvider';
+import { AuthProvider } from '@/components/AuthProvider';
+import { Navbar } from '@/components/layout/Navbar';
 import './globals.css';
 
 const jakarta = Plus_Jakarta_Sans({
@@ -20,7 +22,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" className={jakarta.variable}>
       <body className="min-h-dvh bg-background text-foreground antialiased">
         <AnalyticsProvider />
-        {children}
+        <AuthProvider>
+          <div className="flex min-h-dvh flex-col">
+            <Navbar />
+            <div className="flex-1">{children}</div>
+          </div>
+        </AuthProvider>
         <Toaster richColors position="top-center" />
       </body>
     </html>
