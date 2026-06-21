@@ -5,7 +5,7 @@ Description: Neighborhood Recommendations Platform — Lambda backend
 
 Globals:
   Function:
-    Runtime: python3.12
+    Runtime: python3.14
     Architectures:
       - arm64
     MemorySize: 256
