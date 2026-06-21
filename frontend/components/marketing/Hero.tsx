@@ -2,23 +2,14 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Search, MapPin } from 'lucide-react';
-import { useState } from 'react';
-import { Button } from '@/components/ui/button';
+import { MapPin } from 'lucide-react';
+import { SearchAutocomplete } from '@/components/SearchAutocomplete';
 import { CATEGORIES } from '@/lib/categories';
 
-// A sample of categories shown as quick-pick chips in the hero.
 const HERO_CATEGORIES = CATEGORIES.slice(0, 8);
 
 export function Hero() {
   const router = useRouter();
-  const [query, setQuery] = useState('');
-
-  function submit(e: React.FormEvent) {
-    e.preventDefault();
-    const q = query.trim();
-    if (q) router.push(`/browse?q=${encodeURIComponent(q)}`);
-  }
 
   return (
     <section className="bg-primary">
@@ -40,25 +31,11 @@ export function Hero() {
           plumbers and pros your actual neighbors recommend — by name.
         </p>
 
-        {/* Search bar */}
-        <form
-          onSubmit={submit}
-          className="flex w-full max-w-[540px] items-center gap-2 rounded-full bg-white px-5 py-2 shadow-[0_24px_50px_-24px_rgba(0,0,0,0.6)]"
-        >
-          <Search className="size-4 shrink-0 text-muted-foreground" aria-hidden />
-          <input
-            type="search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            maxLength={100}
-            aria-label="Search recommendations"
-            placeholder="Search plumbers, electricians, dentists…"
-            className="flex-1 bg-transparent py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
-          />
-          <Button type="submit" variant="amber" className="h-9 shrink-0 rounded-full px-5 text-sm">
-            Find a pro
-          </Button>
-        </form>
+        {/* Search bar with autocomplete */}
+        <SearchAutocomplete
+          variant="hero"
+          onSearch={(q) => router.push(`/browse?q=${encodeURIComponent(q)}`)}
+        />
 
         {/* Category chips */}
         <div className="flex flex-wrap justify-center gap-2">

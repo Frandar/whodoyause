@@ -1,10 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { Search } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
+import { SearchAutocomplete } from '@/components/SearchAutocomplete';
 
 export function SearchHero({
   onSearch,
@@ -15,22 +12,10 @@ export function SearchHero({
 }: {
   onSearch: (query: string) => void;
   defaultValue?: string;
-  // Pass a node to override the default headline, or `null` to hide it.
   heading?: React.ReactNode;
   className?: string;
   autoFocus?: boolean;
 }) {
-  const [query, setQuery] = useState(defaultValue);
-
-  // Resync when navigation changes the seeded value (e.g. /browse?q=…).
-  useEffect(() => setQuery(defaultValue), [defaultValue]);
-
-  function submit(e: React.FormEvent) {
-    e.preventDefault();
-    const q = query.trim();
-    if (q) onSearch(q);
-  }
-
   return (
     <section className={cn('flex flex-col items-center gap-5 text-center', className)}>
       {heading === undefined ? (
@@ -40,28 +25,12 @@ export function SearchHero({
       ) : (
         heading
       )}
-
-      <form onSubmit={submit} className="flex w-full max-w-xl items-center gap-2">
-        <div className="relative flex-1">
-          <Search
-            className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
-            aria-hidden
-          />
-          <Input
-            type="search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            maxLength={100}
-            autoFocus={autoFocus}
-            aria-label="Search recommendations"
-            placeholder="Search plumbers, electricians, dentists…"
-            className="h-12 rounded-full pl-11 text-base"
-          />
-        </div>
-        <Button type="submit" className="h-12 rounded-full px-6">
-          Search
-        </Button>
-      </form>
+      <SearchAutocomplete
+        onSearch={onSearch}
+        defaultValue={defaultValue}
+        autoFocus={autoFocus}
+        variant="default"
+      />
     </section>
   );
 }
