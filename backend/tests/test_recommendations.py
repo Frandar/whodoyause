@@ -146,8 +146,8 @@ def test_list_by_category_unknown_raises():
 
 def test_list_by_category_ranked():
     rows = [
-        ("a", "Top Plumber", "Plumber", None, 5, "Mike"),
-        ("b", "Joe Plumbing", "Plumber", "solid", 2, "Dana"),
+        ("a", "Top Plumber", "Plumber", None, 5, "Mike", False),
+        ("b", "Joe Plumbing", "Plumber", "solid", 2, "Dana", False),
     ]
     def execute_fn(sql, params):
         assert "order by r.endorsement_count desc" in sql
@@ -157,7 +157,38 @@ def test_list_by_category_ranked():
     assert result["statusCode"] == 200
     assert [r["business_name"] for r in result["body"]] == ["Top Plumber", "Joe Plumbing"]
     assert result["body"][0]["created_by_name"] == "Mike"
+    assert result["body"][0]["endorsed_by_me"] is False
     assert "created_at" not in result["body"][0]  # summary shape
+
+
+def test_list_anonymous_omits_endorsement_join():
+    # No viewer → endorsed_by_me is a constant false, no join, no extra param.
+    captured = {}
+    def execute_fn(sql, params):
+        captured["sql"] = sql
+        captured["params"] = params
+        return _Cursor(rows=[])
+    with patch.object(rec.db, "get_connection", return_value=_Conn(execute_fn)):
+        rec.list_by_category("Plumber")
+    assert "false as endorsed_by_me" in captured["sql"]
+    assert "left join endorsement me" not in captured["sql"]
+    assert captured["params"] == ("Plumber",)
+
+
+def test_list_with_viewer_joins_their_endorsement():
+    viewer = "55555555-5555-5555-5555-555555555555"
+    rows = [("a", "Top Plumber", "Plumber", None, 5, "Mike", True)]
+    captured = {}
+    def execute_fn(sql, params):
+        captured["sql"] = sql
+        captured["params"] = params
+        return _Cursor(rows=rows)
+    with patch.object(rec.db, "get_connection", return_value=_Conn(execute_fn)):
+        result = rec.list_by_category("Plumber", viewer)
+    assert "left join endorsement me" in captured["sql"]
+    # Join param precedes the WHERE param.
+    assert captured["params"] == (viewer, "Plumber")
+    assert result["body"][0]["endorsed_by_me"] is True
 
 
 def test_category_counts_includes_all_seed_categories():
@@ -208,7 +239,7 @@ def test_search_unknown_category_raises():
 
 
 def test_search_uses_websearch_tsquery_and_ranks():
-    rows = [("a", "Ace Plumbing", "Plumber", None, 4, "Mike")]
+    rows = [("a", "Ace Plumbing", "Plumber", None, 4, "Mike", False)]
     captured = {}
     def execute_fn(sql, params):
         captured["sql"] = sql
@@ -229,6 +260,18 @@ def test_search_with_category_filter():
         return _Cursor(rows=[])
     with patch.object(rec.db, "get_connection", return_value=_Conn(execute_fn)):
         rec.search("plumber", "Plumber")
+
+
+def test_search_with_viewer_orders_params_join_query_category():
+    viewer = "66666666-6666-6666-6666-666666666666"
+    captured = {}
+    def execute_fn(sql, params):
+        captured["params"] = params
+        return _Cursor(rows=[])
+    with patch.object(rec.db, "get_connection", return_value=_Conn(execute_fn)):
+        rec.search("plumber", "Plumber", viewer)
+    # join param (viewer) → query → category
+    assert captured["params"] == (viewer, "plumber", "Plumber")
 
 
 def test_search_zero_results_logs_content_gap(capsys):

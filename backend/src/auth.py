@@ -4,6 +4,11 @@ from jwt import PyJWKClient
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
 
+# NOTE: verification is JWKS-based (asymmetric RS256/ES256), so the Supabase
+# project MUST use asymmetric JWT signing keys. Legacy projects that still sign
+# with the shared HS256 secret will fail every write with 401 here — enable
+# asymmetric signing keys in the Supabase dashboard before deploying.
+
 # Cached per cold start — fetch JWKS once, not per request.
 _jwks_client: PyJWKClient | None = None
 

@@ -23,6 +23,19 @@ def _auth_header(event: dict) -> str | None:
     return headers.get("authorization") or headers.get("Authorization")
 
 
+def _optional_user_id(event: dict) -> str | None:
+    """For public reads that personalize when signed in: return the caller's id
+    if they sent a valid JWT, otherwise None. A bad/expired token is treated as
+    anonymous (no 401) — these endpoints are public."""
+    header = _auth_header(event)
+    if not header:
+        return None
+    try:
+        return verify_token(header)["sub"]
+    except AuthError:
+        return None
+
+
 def _json_body(event: dict) -> dict:
     """Parse the Function URL request body as JSON. Raises ValueError if malformed."""
     raw = event.get("body")
@@ -64,11 +77,11 @@ def lambda_handler(event: dict, _context) -> dict:
 
         if method == "GET" and path == "/recommendations/search":
             params = event.get("queryStringParameters") or {}
-            query = params.get("q")
-            if not query:
-                return _response(400, {"error": {"code": "invalid_input", "message": "q is required"}})
             try:
-                result = recommendations.search(query, params.get("category"))
+                # search() validates q (presence/length) and raises InvalidInput.
+                result = recommendations.search(
+                    params.get("q"), params.get("category"), _optional_user_id(event)
+                )
             except recommendations.InvalidInput as exc:
                 return _response(400, {"error": {"code": "invalid_input", "message": str(exc)}})
             return _response(result["statusCode"], result["body"])
@@ -79,7 +92,7 @@ def lambda_handler(event: dict, _context) -> dict:
             if not category:
                 return _response(400, {"error": {"code": "invalid_input", "message": "category is required"}})
             try:
-                result = recommendations.list_by_category(category)
+                result = recommendations.list_by_category(category, _optional_user_id(event))
             except recommendations.InvalidInput as exc:
                 return _response(400, {"error": {"code": "invalid_input", "message": str(exc)}})
             return _response(result["statusCode"], result["body"])
