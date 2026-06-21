@@ -14,6 +14,28 @@ Parameters:
       is already taken.
 
 Resources:
+  # Rewrites clean paths to their .html files before S3 sees the request.
+  # Without this, /browse → S3 key "browse" (404/403) → falls back to index.html.
+  # Next.js static export emits browse.html, recommend.html, etc.
+  UrlRewriteFunction:
+    Type: AWS::CloudFront::Function
+    Properties:
+      Name: whodoyause-url-rewrite
+      AutoPublish: true
+      FunctionConfig:
+        Comment: Append .html for Next.js static export paths
+        Runtime: cloudfront-js-1.0
+      FunctionCode: |
+        function handler(event) {
+          var uri = event.request.uri;
+          // Root is handled by DefaultRootObject. Skip anything with a dot
+          // (assets, _next/, etc.). Append .html to clean app routes.
+          if (uri !== '/' && uri.indexOf('.') === -1) {
+            event.request.uri = uri + '.html';
+          }
+          return event.request;
+        }
+
   # Private bucket — never public. CloudFront reaches it only via the OAC below.
   HostingBucket:
     Type: AWS::S3::Bucket
@@ -60,6 +82,9 @@ Resources:
           CachedMethods: [GET, HEAD]
           # Managed "CachingOptimized" policy.
           CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+          FunctionAssociations:
+            - EventType: viewer-request
+              FunctionARN: !GetAtt UrlRewriteFunction.FunctionMetadata.FunctionARN
         # SPA fallback: a private S3 bucket returns 403 for any missing key, so
         # serve index.html (200) for unknown paths. Harmless for M1's single page.
         CustomErrorResponses:
