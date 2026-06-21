@@ -23,6 +23,30 @@ import { Skeleton } from '@/components/ui/skeleton';
 
 type Mode = 'search' | 'browse' | null;
 
+// First-time-signup detection. Magic-link auth creates the user row when the
+// link is *requested* but only fires SIGNED_IN when it's *clicked* (often
+// minutes later), so a tight "created moments ago" window misses real signups.
+// Instead we record which user ids this device has already counted and fire
+// once per genuinely new account (created within the link's lifetime — a
+// generous 24h guards against clock skew while still excluding existing users
+// signing in on a fresh device).
+const SEEN_USERS_KEY = 'wdyu_seen_users';
+const SIGNUP_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+function isNewSignup(userId: string, createdAt: string | undefined): boolean {
+  try {
+    const seen: string[] = JSON.parse(localStorage.getItem(SEEN_USERS_KEY) || '[]');
+    if (seen.includes(userId)) return false;
+    localStorage.setItem(SEEN_USERS_KEY, JSON.stringify([...seen, userId]));
+    if (!createdAt) return false;
+    return Date.now() - new Date(createdAt).getTime() < SIGNUP_MAX_AGE_MS;
+  } catch {
+    // localStorage unavailable (private mode) — can't dedupe, so skip rather
+    // than risk counting a signup on every sign-in.
+    return false;
+  }
+}
+
 export default function Home() {
   // auth
   const [email, setEmail] = useState<string | null>(null);
@@ -33,44 +57,93 @@ export default function Home() {
 
   // discovery (search + browse share one results list)
   const [categories, setCategories] = useState<CategoryCount[]>([]);
+  const [categoriesError, setCategoriesError] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<Recommendation[]>([]);
   const [loading, setLoading] = useState(false);
   const [mode, setMode] = useState<Mode>(null);
 
+  // Monotonic id so an earlier (slower) fetch can't overwrite a later one's
+  // results. Each fetch claims an id; only the latest may touch shared state.
+  const reqId = useRef(0);
+
   const refreshCategories = useCallback(() => {
-    getCategoryCounts().then(setCategories).catch(() => {});
+    getCategoryCounts()
+      .then((data) => {
+        setCategories(data);
+        setCategoriesError(false);
+      })
+      .catch(() => setCategoriesError(true));
   }, []);
 
-  const loadCategory = useCallback((category: string) => {
-    capture('category_browsed', { category });
+  // Pure fetch (no analytics) — also used to silently refresh after an add.
+  const fetchCategory = useCallback((category: string): Promise<Recommendation[] | null> => {
+    const id = ++reqId.current;
     setMode('browse');
     setSelected(category);
     setQuery('');
     setLoading(true);
-    getRecommendations(category)
-      .then(setResults)
-      .catch(() => toast.error("Couldn't load recommendations"))
-      .finally(() => setLoading(false));
+    return getRecommendations(category)
+      .then((data) => {
+        if (id !== reqId.current) return null; // superseded
+        setResults(data);
+        return data;
+      })
+      .catch(() => {
+        if (id !== reqId.current) return null;
+        setResults([]);
+        toast.error("Couldn't load recommendations");
+        return null;
+      })
+      .finally(() => {
+        if (id === reqId.current) setLoading(false);
+      });
   }, []);
 
-  const runSearch = useCallback((q: string) => {
+  const fetchSearch = useCallback((q: string): Promise<Recommendation[] | null> => {
+    const id = ++reqId.current;
     setMode('search');
     setQuery(q);
     setSelected(null);
     setLoading(true);
-    searchRecommendations(q)
+    return searchRecommendations(q)
       .then((data) => {
+        if (id !== reqId.current) return null; // superseded
         setResults(data);
-        capture('search', { query: q, category: null, results_count: data.length });
-        if (data.length === 0) capture('search_zero_results', { query: q, category: null });
+        return data;
       })
-      .catch(() => toast.error('Search failed'))
-      .finally(() => setLoading(false));
+      .catch(() => {
+        if (id !== reqId.current) return null;
+        setResults([]);
+        toast.error('Search failed');
+        return null;
+      })
+      .finally(() => {
+        if (id === reqId.current) setLoading(false);
+      });
   }, []);
 
-  const signupFired = useRef(false);
+  // User-initiated entry points fire analytics; the fetch helpers above do not,
+  // so silently refreshing after an add never double-counts funnel events.
+  const browseCategory = useCallback(
+    (category: string) => {
+      capture('category_browsed', { category });
+      fetchCategory(category);
+    },
+    [fetchCategory],
+  );
+
+  const runSearch = useCallback(
+    (q: string) => {
+      fetchSearch(q).then((data) => {
+        if (!data) return; // error or superseded — don't log a phantom search
+        capture('search', { query: q, category: null, results_count: data.length });
+        if (data.length === 0) capture('search_zero_results', { query: q, category: null });
+      });
+    },
+    [fetchSearch],
+  );
 
   useEffect(() => {
     refreshCategories();
@@ -86,12 +159,8 @@ export default function Home() {
       setEmail(user?.email ?? null);
       if (user) {
         identify(user.id, { email: user.email });
-        // Treat a brand-new account (created moments ago) as a signup.
-        if (event === 'SIGNED_IN' && !signupFired.current && user.created_at) {
-          if (Date.now() - new Date(user.created_at).getTime() < 60_000) {
-            signupFired.current = true;
-            capture('signup');
-          }
+        if (event === 'SIGNED_IN' && isNewSignup(user.id, user.created_at)) {
+          capture('signup');
         }
       } else if (event === 'SIGNED_OUT') {
         resetIdentity();
@@ -102,8 +171,9 @@ export default function Home() {
 
   function onAdded() {
     refreshCategories();
-    if (mode === 'search' && query) runSearch(query);
-    else if (mode === 'browse' && selected) loadCategory(selected);
+    // Refresh the current view WITHOUT re-firing search/browse analytics.
+    if (mode === 'search' && query) fetchSearch(query);
+    else if (mode === 'browse' && selected) fetchCategory(selected);
   }
 
   async function signIn(e: React.FormEvent) {
@@ -144,14 +214,25 @@ export default function Home() {
 
       {/* Discovery — public */}
       <section className="flex flex-col gap-4">
-        {categories.length === 0 ? (
+        {categoriesError ? (
+          <p className="text-sm text-muted-foreground">
+            Couldn&apos;t load categories.{' '}
+            <button
+              type="button"
+              onClick={refreshCategories}
+              className="font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              Retry
+            </button>
+          </p>
+        ) : categories.length === 0 ? (
           <div className="flex flex-wrap gap-2">
             {Array.from({ length: 6 }).map((_, i) => (
               <Skeleton key={i} className="h-8 w-24 rounded-full" />
             ))}
           </div>
         ) : (
-          <CategoryChips items={categories} selected={selected} onSelect={loadCategory} />
+          <CategoryChips items={categories} selected={selected} onSelect={browseCategory} />
         )}
 
         {mode === 'search' && !loading && (
