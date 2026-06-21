@@ -102,7 +102,7 @@ def create(claims: dict, body: dict) -> dict:
 
 
 def _to_summary(row) -> dict:
-    rec_id, business_name, category, note, count, created_by_name = row
+    rec_id, business_name, category, note, count, created_by_name, endorsed_by_me = row
     return {
         "id": str(rec_id),
         "business_name": business_name,
@@ -110,24 +110,40 @@ def _to_summary(row) -> dict:
         "note": note,
         "endorsement_count": count,
         "created_by_name": created_by_name,
+        "endorsed_by_me": bool(endorsed_by_me),
     }
 
 
-_LIST_SELECT = (
-    "select r.id, r.business_name, r.category, r.note, r.endorsement_count, u.display_name "
-    "from recommendation r join app_user u on u.id = r.created_by"
-)
+def _list_select(user_id: str | None) -> str:
+    """Build the list/search SELECT. When a viewer is known (valid JWT on an
+    otherwise-public read), left-join their endorsement so the client can render
+    the +1 state correctly; otherwise endorsed_by_me is constant false. The
+    user_id is always a bound parameter (the join clause carries the first %s)."""
+    if user_id:
+        endorsed = "(me.user_id is not null)"
+        join = " left join endorsement me on me.recommendation_id = r.id and me.user_id = %s"
+    else:
+        endorsed = "false"
+        join = ""
+    return (
+        "select r.id, r.business_name, r.category, r.note, r.endorsement_count, "
+        "u.display_name, " + endorsed + " as endorsed_by_me "
+        "from recommendation r join app_user u on u.id = r.created_by" + join
+    )
 
 
-def list_by_category(category: str) -> dict:
-    """Public: recommendations in a category, ranked by endorsements (US4)."""
+def list_by_category(category: str, user_id: str | None = None) -> dict:
+    """Public: recommendations in a category, ranked by endorsements (US4).
+    A valid JWT is optional; when present it populates endorsed_by_me."""
     if category not in CATEGORY_SET:
         raise InvalidInput("unknown category")
+    # Join param (if any) precedes the WHERE param — see _list_select.
+    params = ([user_id] if user_id else []) + [category]
     with db.get_connection() as conn:
         rows = conn.execute(
-            _LIST_SELECT + " where r.category = %s "
+            _list_select(user_id) + " where r.category = %s "
             "order by r.endorsement_count desc, r.created_at desc",
-            (category,),
+            tuple(params),
         ).fetchall()
     return {"statusCode": 200, "body": [_to_summary(r) for r in rows]}
 
@@ -145,10 +161,11 @@ def category_counts() -> dict:
     }
 
 
-def search(query: str, category: str | None = None) -> dict:
+def search(query: str, category: str | None = None, user_id: str | None = None) -> dict:
     """Public full-text search (US1). Uses websearch_to_tsquery with a bound
     param (never string-interpolated), ranked by endorsements. Zero-result
-    queries are logged server-side as a content-gap signal."""
+    queries are logged server-side as a content-gap signal. A valid JWT is
+    optional; when present it populates endorsed_by_me."""
     query = (query or "").strip()
     if not query:
         raise InvalidInput("q is required")
@@ -157,8 +174,9 @@ def search(query: str, category: str | None = None) -> dict:
     if category is not None and category not in CATEGORY_SET:
         raise InvalidInput("unknown category")
 
-    sql = _LIST_SELECT + " where r.search_vector @@ websearch_to_tsquery('english', %s)"
-    params: list = [query]
+    sql = _list_select(user_id) + " where r.search_vector @@ websearch_to_tsquery('english', %s)"
+    # Join param (if any) precedes the WHERE params — see _list_select.
+    params: list = ([user_id] if user_id else []) + [query]
     if category:
         sql += " and r.category = %s"
         params.append(category)

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ThumbsUp, User } from 'lucide-react';
 import { toast } from 'sonner';
 import { Card, CardContent } from '@/components/ui/card';
@@ -18,8 +18,16 @@ export function RecommendationCard({
   signedIn: boolean;
 }) {
   const [count, setCount] = useState(rec.endorsement_count);
-  const [endorsed, setEndorsed] = useState(false);
+  const [endorsed, setEndorsed] = useState(rec.endorsed_by_me);
   const [pending, setPending] = useState(false);
+
+  // Resync to server truth when the list is refetched (the card instance is
+  // reused across refetches via a stable key, so useState's initial value is
+  // not re-read on its own).
+  useEffect(() => {
+    setCount(rec.endorsement_count);
+    setEndorsed(rec.endorsed_by_me);
+  }, [rec.endorsement_count, rec.endorsed_by_me]);
 
   async function toggle() {
     if (!signedIn) {

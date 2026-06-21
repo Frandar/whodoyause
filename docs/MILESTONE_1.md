@@ -85,7 +85,7 @@ Files to modify: none (greenfield).
 
 ### template.yaml (SAM)
 
-- One `AWS::Serverless::Function`, Python 3.12, 256 MB, 10s timeout.
+- One `AWS::Serverless::Function`, Python 3.14, 256 MB, 10s timeout.
 - `FunctionUrlConfig` with `AuthType: NONE` (auth enforced in-code) and CORS limited to the
   CloudFront origin.
 - Env vars: `DATABASE_URL` (pooler), `SUPABASE_URL`, `CORS_ALLOW_ORIGIN`.
