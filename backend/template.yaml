@@ -5,7 +5,7 @@ Description: Neighborhood Recommendations Platform — Lambda backend
 
 Globals:
   Function:
-    Runtime: python3.14
+    Runtime: python3.12
     Architectures:
       - arm64
     MemorySize: 256
@@ -51,8 +51,9 @@ Resources:
             - DELETE
           AllowOrigins:
             - !Ref CorsAllowOrigin
-      Policies:
-        - CloudWatchLogsFullAccess
+      # No explicit Policies: SAM attaches AWSLambdaBasicExecutionRole by default,
+      # which scopes CloudWatch Logs to this function's own log group. The service
+      # needs nothing more (it talks to Postgres over the network, not via IAM).
 
   ApiErrorAlarm:
     Type: AWS::CloudWatch::Alarm

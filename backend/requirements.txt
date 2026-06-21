@@ -12,5 +12,7 @@ pycparser==3.0 ; implementation_name != 'PyPy' and platform_python_implementatio
     # via cffi
 pyjwt==2.13.0
     # via whodoyause-backend
+typing-extensions==4.15.0 ; python_full_version < '3.13'
+    # via psycopg
 tzdata==2026.2 ; sys_platform == 'win32'
     # via psycopg
