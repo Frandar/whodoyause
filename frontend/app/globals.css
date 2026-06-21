@@ -1,30 +1,33 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
-/* Design tokens — roles per docs/FRONTEND.md, values sampled from Fresha's live CSS.
-   Primary #6950F3 is Fresha's signature violet; greys/borders are their neutrals. */
+/* Design tokens — forest green brand + golden amber CTA + warm cream canvas.
+   Sampled from the approved design file (WhoDoYaUse Home.html). */
 :root {
-  --radius: 1rem; /* 16px — soft cards (Fresha uses 16–24px) */
+  --radius: 1.375rem; /* 22px — soft cards (design file --rad: 22px) */
 
-  --background: #ffffff;
-  --foreground: #131313;
+  --background: #faf6ef;   /* warm cream canvas */
+  --foreground: #14241e;   /* near-black on cream */
 
   --card: #ffffff;
-  --card-foreground: #131313;
+  --card-foreground: #14241e;
   --popover: #ffffff;
-  --popover-foreground: #131313;
+  --popover-foreground: #14241e;
 
-  --primary: #6950f3;            /* Fresha violet — the single confident accent */
+  --primary: #15493f;            /* forest green — brand + primary buttons */
   --primary-foreground: #ffffff;
 
-  --secondary: #f2f2f2;
-  --secondary-foreground: #131313;
+  --secondary: #e6efe7;          /* light sage surface */
+  --secondary-foreground: #15493f;
 
-  --muted: #f2f2f2;
-  --muted-foreground: #53666c;   /* AA-contrast secondary text */
+  --muted: #e6efe7;
+  --muted-foreground: #6a786f;   /* green-gray secondary text, AA-contrast */
 
-  --accent: #f2f2f2;
-  --accent-foreground: #131313;
+  --accent: #e6efe7;             /* hover surface (shadcn ghost/outline hover) */
+  --accent-foreground: #15493f;
+
+  --amber: #ffc23d;              /* golden amber — CTA button (most important action) */
+  --amber-foreground: #1a1a1a;   /* near-black ink on amber */
 
   --destructive: #d4163a;
   --destructive-foreground: #ffffff;
@@ -32,12 +35,17 @@
   --success: #1f8900;
   --success-foreground: #ffffff;
 
-  --warning: #b66a00; /* AA-contrast amber for cautions */
+  --warning: #b66a00;
   --warning-foreground: #ffffff;
 
-  --border: #dee3e7;
-  --input: #dee3e7;
-  --ring: #6950f3;
+  --border: #d4e1d8;             /* from rgba(20,40,30,.08) over cream canvas */
+  --input: #d4e1d8;
+  --ring: #15493f;
+
+  /* Soft elevations — green-tinted shadows to match the brand. */
+  --shadow-soft: 0 1px 2px rgb(8 30 22 / 0.04), 0 4px 16px rgb(8 30 22 / 0.06);
+  --shadow-soft-lg: 0 2px 4px rgb(8 30 22 / 0.05), 0 12px 32px rgb(8 30 22 / 0.08);
+  --shadow-card-hover: 0 24px 44px -28px rgb(8 30 22 / 0.4);
 }
 
 @theme inline {
@@ -55,6 +63,8 @@
   --color-muted-foreground: var(--muted-foreground);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
+  --color-amber: var(--amber);
+  --color-amber-foreground: var(--amber-foreground);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
   --color-success: var(--success);
@@ -65,16 +75,17 @@
   --color-input: var(--input);
   --color-ring: var(--ring);
 
-  /* Soft elevations (FRONTEND.md: subtle, not heavy drop shadows). */
-  --shadow-soft: 0 1px 2px rgb(19 19 19 / 0.04), 0 4px 16px rgb(19 19 19 / 0.06);
-  --shadow-soft-lg: 0 2px 4px rgb(19 19 19 / 0.05), 0 12px 32px rgb(19 19 19 / 0.08);
-
-  --radius-sm: calc(var(--radius) - 8px);
-  --radius-md: calc(var(--radius) - 4px);
+  --radius-sm: calc(var(--radius) - 10px);
+  --radius-md: calc(var(--radius) - 6px);
   --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
+  --radius-xl: calc(var(--radius) + 6px);
 
   --font-sans: var(--font-jakarta), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-bricolage), var(--font-jakarta), ui-sans-serif, system-ui, sans-serif;
+
+  --shadow-soft: var(--shadow-soft);
+  --shadow-soft-lg: var(--shadow-soft-lg);
+  --shadow-card-hover: var(--shadow-card-hover);
 }
 
 @layer base {
@@ -83,6 +94,9 @@
   }
   body {
     @apply bg-background text-foreground;
+  }
+  h1, h2, h3 {
+    font-family: var(--font-display);
   }
 }
 

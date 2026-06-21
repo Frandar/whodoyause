@@ -23,14 +23,14 @@ export function Navbar() {
   }
 
   return (
-    <header className="sticky top-0 z-40 border-b border-border bg-background/90 backdrop-blur">
+    <header className="sticky top-0 z-40 bg-primary">
       <nav
         aria-label="Primary"
         className="mx-auto flex h-14 w-full max-w-6xl items-center justify-between gap-4 px-4"
       >
         <Link
           href="/"
-          className="rounded-md text-lg font-bold tracking-tight focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="rounded-md text-lg font-bold tracking-tight text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
         >
           WhoDoYaUse
         </Link>
@@ -43,10 +43,10 @@ export function Navbar() {
               href={link.href}
               aria-current={isActive(link.href) ? 'page' : undefined}
               className={cn(
-                'rounded-full px-3 py-1.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                'rounded-full px-3 py-1.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50',
                 isActive(link.href)
-                  ? 'bg-secondary text-foreground'
-                  : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+                  ? 'bg-white/15 text-white'
+                  : 'text-white/70 hover:bg-white/10 hover:text-white',
               )}
             >
               {link.label}
@@ -54,11 +54,16 @@ export function Navbar() {
           ))}
           <div className="ml-2">
             {loading ? null : signedIn ? (
-              <Button variant="ghost" size="sm" onClick={() => signOut()}>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => signOut()}
+                className="text-white/70 hover:bg-white/10 hover:text-white"
+              >
                 Sign out
               </Button>
             ) : (
-              <Button asChild size="sm" className="rounded-full">
+              <Button asChild size="sm" variant="amber" className="rounded-full">
                 <Link href="/signin">Sign in</Link>
               </Button>
             )}
@@ -72,7 +77,7 @@ export function Navbar() {
           aria-expanded={open}
           aria-controls="mobile-menu"
           aria-label={open ? 'Close menu' : 'Open menu'}
-          className="inline-flex size-9 items-center justify-center rounded-md text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:hidden"
+          className="inline-flex size-9 items-center justify-center rounded-md text-white hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50 md:hidden"
         >
           {open ? <X className="size-5" aria-hidden /> : <Menu className="size-5" aria-hidden />}
         </button>
@@ -80,7 +85,7 @@ export function Navbar() {
 
       {/* Mobile menu */}
       {open && (
-        <div id="mobile-menu" className="border-t border-border bg-background md:hidden">
+        <div id="mobile-menu" className="border-t border-white/10 bg-primary md:hidden">
           <div className="mx-auto flex w-full max-w-6xl flex-col gap-1 px-4 py-3">
             {NAV_LINKS.map((link) => (
               <Link
@@ -89,35 +94,32 @@ export function Navbar() {
                 onClick={() => setOpen(false)}
                 aria-current={isActive(link.href) ? 'page' : undefined}
                 className={cn(
-                  'rounded-lg px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                  'rounded-lg px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50',
                   isActive(link.href)
-                    ? 'bg-secondary text-foreground'
-                    : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+                    ? 'bg-white/15 text-white'
+                    : 'text-white/70 hover:bg-white/10 hover:text-white',
                 )}
               >
                 {link.label}
               </Link>
             ))}
-            <div className="mt-1 border-t border-border pt-2">
+            <div className="mt-1 border-t border-white/10 pt-2">
               {loading ? null : signedIn ? (
                 <div className="flex flex-col gap-2">
                   {email && (
-                    <p className="px-3 text-xs text-muted-foreground">Signed in as {email}</p>
+                    <p className="px-3 text-xs text-white/50">Signed in as {email}</p>
                   )}
                   <Button
-                    variant="outline"
+                    variant="ghost"
                     size="sm"
-                    onClick={() => {
-                      setOpen(false);
-                      signOut();
-                    }}
-                    className="w-full rounded-full"
+                    onClick={() => { setOpen(false); signOut(); }}
+                    className="w-full rounded-full text-white/70 hover:bg-white/10 hover:text-white"
                   >
                     Sign out
                   </Button>
                 </div>
               ) : (
-                <Button asChild size="sm" className="w-full rounded-full">
+                <Button asChild size="sm" variant="amber" className="w-full rounded-full">
                   <Link href="/signin" onClick={() => setOpen(false)}>
                     Sign in
                   </Link>

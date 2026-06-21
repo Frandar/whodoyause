@@ -9,9 +9,9 @@ export function CategoryGrid({ items }: { items: CategoryCount[] }) {
         <li key={category}>
           <Link
             href={`/browse?category=${encodeURIComponent(category)}`}
-            className="group flex h-full items-center justify-between gap-2 rounded-2xl border border-border bg-card p-4 shadow-soft transition-colors hover:border-primary/40 hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="group flex h-full items-center justify-between gap-2 rounded-[var(--radius)] border border-border bg-background p-5 shadow-soft transition-all duration-300 hover:-translate-y-1.5 hover:border-primary/30 hover:shadow-[var(--shadow-card-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
-            <span className="flex flex-col">
+            <span className="flex flex-col gap-1">
               <span className="font-semibold leading-tight">{category}</span>
               <span className="text-xs text-muted-foreground">
                 {count > 0

@@ -1,6 +1,5 @@
 import { Users, ShieldCheck, MessagesSquare } from 'lucide-react';
 
-// Honest trust framing only — real signals, no fabricated testimonials or logos.
 const POINTS = [
   {
     icon: Users,
@@ -25,10 +24,10 @@ export function TrustStrip({
   totalRecommendations: number | null;
 }) {
   return (
-    <section className="mx-auto w-full max-w-5xl px-4 py-10">
+    <section className="mx-auto w-full max-w-5xl px-4 py-12">
       {totalRecommendations !== null && totalRecommendations > 0 && (
         <p className="mb-8 text-center text-sm font-medium text-muted-foreground">
-          {totalRecommendations} neighbor recommendation
+          {totalRecommendations.toLocaleString()} neighbor recommendation
           {totalRecommendations === 1 ? '' : 's'} and counting.
         </p>
       )}
@@ -36,13 +35,13 @@ export function TrustStrip({
         {POINTS.map(({ icon: Icon, title, body }) => (
           <li
             key={title}
-            className="flex flex-col gap-2 rounded-2xl border border-border bg-card p-5 shadow-soft"
+            className="flex flex-col gap-3 rounded-[var(--radius)] border border-border bg-card p-6 shadow-soft transition-all duration-300 hover:-translate-y-1.5 hover:shadow-[var(--shadow-card-hover)]"
           >
             <span className="flex size-9 items-center justify-center rounded-full bg-secondary text-primary">
               <Icon className="size-4" aria-hidden />
             </span>
             <h3 className="font-semibold">{title}</h3>
-            <p className="text-sm text-muted-foreground">{body}</p>
+            <p className="text-sm leading-relaxed text-muted-foreground">{body}</p>
           </li>
         ))}
       </ul>
