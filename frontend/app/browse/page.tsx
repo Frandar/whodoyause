@@ -214,6 +214,11 @@ function BrowseInner() {
 }
 
 export default function BrowsePage() {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
+
+  if (!mounted) return <BrowseFallback />;
+
   return (
     <Suspense fallback={<BrowseFallback />}>
       <BrowseInner />
