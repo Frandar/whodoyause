@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { CATEGORIES } from '@/lib/categories';
-import { addRecommendation, endorse } from '@/lib/api';
+import { addRecommendation, endorse, type Recommendation } from '@/lib/api';
 import { capture } from '@/lib/analytics';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -18,7 +18,13 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 
-export default function AddRecommendationForm({ onAdded }: { onAdded?: () => void }) {
+export default function AddRecommendationForm({
+  onAdded,
+}: {
+  // Receives the new record on a fresh add; called with no argument when the
+  // dedupe "+1 it instead" path runs (nothing new was created).
+  onAdded?: (rec?: Recommendation) => void;
+}) {
   const [businessName, setBusinessName] = useState('');
   const [category, setCategory] = useState('');
   const [note, setNote] = useState('');
@@ -44,7 +50,7 @@ export default function AddRecommendationForm({ onAdded }: { onAdded?: () => voi
       setBusinessName('');
       setCategory('');
       setNote('');
-      onAdded?.();
+      onAdded?.(result.recommendation);
     } else if (result.kind === 'duplicate') {
       const existingId = result.existingId;
       toast.info('Already recommended', {

@@ -1,11 +1,12 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { ThumbsUp, User } from 'lucide-react';
+import { ThumbsUp } from 'lucide-react';
 import { toast } from 'sonner';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Avatar } from '@/components/ui/avatar';
 import { cn } from '@/lib/utils';
 import { endorse, unendorse, type Recommendation } from '@/lib/api';
 import { capture } from '@/lib/analytics';
@@ -74,8 +75,8 @@ export function RecommendationCard({
         {rec.note && <p className="text-sm text-muted-foreground">{rec.note}</p>}
 
         <div className="flex items-center justify-between gap-3 text-sm text-muted-foreground">
-          <span className="inline-flex items-center gap-1.5">
-            <User className="size-3.5" aria-hidden />
+          <span className="inline-flex items-center gap-2">
+            <Avatar name={rec.created_by_name} size="sm" />
             {rec.created_by_name}
           </span>
 
