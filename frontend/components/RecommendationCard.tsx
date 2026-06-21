@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { endorse, unendorse, type Recommendation } from '@/lib/api';
+import { capture } from '@/lib/analytics';
 
 export function RecommendationCard({
   rec,
@@ -29,6 +30,7 @@ export function RecommendationCard({
     if (!endorsed) {
       const r = await endorse(rec.id);
       if (r.ok) {
+        capture('endorsement_added', { recommendation_id: rec.id });
         setCount(r.count);
         setEndorsed(true);
       } else if (r.kind === 'already') {

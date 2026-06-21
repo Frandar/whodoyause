@@ -1,8 +1,9 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { getSupabase } from '@/lib/supabase';
+import { capture, identify, resetIdentity } from '@/lib/analytics';
 import {
   getCategoryCounts,
   getRecommendations,
@@ -43,6 +44,7 @@ export default function Home() {
   }, []);
 
   const loadCategory = useCallback((category: string) => {
+    capture('category_browsed', { category });
     setMode('browse');
     setSelected(category);
     setQuery('');
@@ -59,20 +61,41 @@ export default function Home() {
     setSelected(null);
     setLoading(true);
     searchRecommendations(q)
-      .then(setResults)
+      .then((data) => {
+        setResults(data);
+        capture('search', { query: q, category: null, results_count: data.length });
+        if (data.length === 0) capture('search_zero_results', { query: q, category: null });
+      })
       .catch(() => toast.error('Search failed'))
       .finally(() => setLoading(false));
   }, []);
+
+  const signupFired = useRef(false);
 
   useEffect(() => {
     refreshCategories();
     const supabase = getSupabase();
     supabase.auth.getSession().then(({ data }) => {
-      setEmail(data.session?.user?.email ?? null);
+      const user = data.session?.user;
+      setEmail(user?.email ?? null);
+      if (user) identify(user.id, { email: user.email });
       setLoadingSession(false);
     });
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      setEmail(session?.user?.email ?? null);
+    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
+      const user = session?.user;
+      setEmail(user?.email ?? null);
+      if (user) {
+        identify(user.id, { email: user.email });
+        // Treat a brand-new account (created moments ago) as a signup.
+        if (event === 'SIGNED_IN' && !signupFired.current && user.created_at) {
+          if (Date.now() - new Date(user.created_at).getTime() < 60_000) {
+            signupFired.current = true;
+            capture('signup');
+          }
+        }
+      } else if (event === 'SIGNED_OUT') {
+        resetIdentity();
+      }
     });
     return () => listener.subscription.unsubscribe();
   }, [refreshCategories]);

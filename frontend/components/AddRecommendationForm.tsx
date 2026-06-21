@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import { CATEGORIES } from '@/lib/categories';
 import { addRecommendation, endorse } from '@/lib/api';
+import { capture } from '@/lib/analytics';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -36,6 +37,7 @@ export default function AddRecommendationForm({ onAdded }: { onAdded?: () => voi
     setSubmitting(false);
 
     if (result.ok) {
+      capture('recommendation_added', { category: result.recommendation.category });
       toast.success('Recommendation added', {
         description: `${result.recommendation.business_name} · ${result.recommendation.category}`,
       });
@@ -53,6 +55,7 @@ export default function AddRecommendationForm({ onAdded }: { onAdded?: () => voi
               onClick: async () => {
                 const r = await endorse(existingId);
                 if (r.ok) {
+                  capture('endorsement_added', { recommendation_id: existingId });
                   toast.success('Thanks for the +1');
                   onAdded?.();
                 } else if (r.kind === 'already') {
