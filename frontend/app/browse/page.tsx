@@ -1,7 +1,6 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { SearchX, Compass } from 'lucide-react';
 import { capture } from '@/lib/analytics';
@@ -20,15 +19,35 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 
+type Params = { q: string; category: string };
+
+function readParams(): Params {
+  if (typeof window === 'undefined') return { q: '', category: '' };
+  const sp = new URLSearchParams(window.location.search);
+  return { q: sp.get('q')?.trim() ?? '', category: sp.get('category') ?? '' };
+}
+
 function BrowseInner() {
-  const router = useRouter();
-  // useSearchParams() is synchronous on the client and reactive to router.push().
-  // BrowseInner is only ever rendered client-side (mounted gate in BrowsePage),
-  // so no Suspense boundary is needed — it never runs during the static build.
-  const params = useSearchParams();
-  const q = params.get('q')?.trim() ?? '';
-  const category = params.get('category') ?? '';
+  // Query params are managed locally via the History API, NOT the Next.js router.
+  // In a static export (`output: 'export'`), router.push() to the same path with a
+  // different query string is a silent no-op — query strings don't define separate
+  // routes — which froze every search/category interaction after a hard page load.
+  // window.history.pushState + a popstate listener gives correct, shareable,
+  // back-button-friendly URLs that always trigger a re-render.
+  const [{ q, category }, setParams] = useState<Params>(readParams);
   const { signedIn } = useAuth();
+
+  const navigate = useCallback((search: string) => {
+    window.history.pushState(null, '', search ? `/browse?${search}` : '/browse');
+    setParams(readParams());
+  }, []);
+
+  // Keep state in sync with browser back/forward.
+  useEffect(() => {
+    const onPop = () => setParams(readParams());
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
 
   const mode: 'search' | 'browse' | null = q ? 'search' : category ? 'browse' : null;
 
@@ -58,8 +77,8 @@ function BrowseInner() {
     refreshCategories();
   }, [refreshCategories]);
 
-  // Fetch + analytics are driven by the URL — the navigation *is* the user
-  // action, so this is the single place search/browse events fire.
+  // Fetch + analytics are driven by the current params — the navigation *is* the
+  // user action, so this is the single place search/browse events fire.
   useEffect(() => {
     if (!mode) {
       setResults([]);
@@ -100,18 +119,19 @@ function BrowseInner() {
   }, [mode, q, category]);
 
   const runSearch = useCallback(
-    (next: string) => router.push(`/browse?q=${encodeURIComponent(next)}`),
-    [router],
+    (next: string) => navigate(`q=${encodeURIComponent(next)}`),
+    [navigate],
   );
   const browseCategory = useCallback(
-    (next: string) => router.push(`/browse?category=${encodeURIComponent(next)}`),
-    [router],
+    (next: string) => navigate(`category=${encodeURIComponent(next)}`),
+    [navigate],
   );
 
   return (
     <main className="mx-auto flex w-full max-w-2xl flex-col gap-8 px-4 py-8">
       <SearchHero
         onSearch={runSearch}
+        onSelectCategory={browseCategory}
         defaultValue={q}
         className="py-2"
         heading={
@@ -217,6 +237,9 @@ function BrowseInner() {
 }
 
 export default function BrowsePage() {
+  // Gate BrowseInner behind a client mount: it reads window.location in its
+  // initial state, so rendering it during the static build (or the first
+  // hydration pass) would mismatch. The fallback matches the static HTML exactly.
   const [mounted, setMounted] = useState(false);
   useEffect(() => { setMounted(true); }, []);
 
