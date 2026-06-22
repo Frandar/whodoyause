@@ -1,7 +1,7 @@
 'use client';
 
-import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { SearchX, Compass } from 'lucide-react';
 import { capture } from '@/lib/analytics';
@@ -22,9 +22,11 @@ import { Skeleton } from '@/components/ui/skeleton';
 
 function BrowseInner() {
   const router = useRouter();
-  const params = useSearchParams();
-  const q = params.get('q')?.trim() ?? '';
-  const category = params.get('category') ?? '';
+  // Read params from window.location — useSearchParams() can permanently suspend
+  // on direct URL access in Next.js static export. window.location is always correct.
+  const sp = new URLSearchParams(window.location.search);
+  const q = sp.get('q')?.trim() ?? '';
+  const category = sp.get('category') ?? '';
   const { signedIn } = useAuth();
 
   const mode: 'search' | 'browse' | null = q ? 'search' : category ? 'browse' : null;
@@ -219,11 +221,7 @@ export default function BrowsePage() {
 
   if (!mounted) return <BrowseFallback />;
 
-  return (
-    <Suspense fallback={<BrowseFallback />}>
-      <BrowseInner />
-    </Suspense>
-  );
+  return <BrowseInner />;
 }
 
 function BrowseFallback() {
