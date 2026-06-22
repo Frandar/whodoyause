@@ -7,6 +7,7 @@ import { Menu, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/components/AuthProvider';
 import { Button } from '@/components/ui/button';
+import { Logo } from '@/components/Logo';
 
 const NAV_LINKS = [
   { href: '/browse', label: 'Browse' },
@@ -28,12 +29,7 @@ export function Navbar() {
         aria-label="Primary"
         className="mx-auto flex h-14 w-full max-w-6xl items-center justify-between gap-4 px-4"
       >
-        <Link
-          href="/"
-          className="rounded-md text-lg font-bold tracking-tight text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
-        >
-          WhoDoYaUse
-        </Link>
+        <Logo variant="dark" />
 
         {/* Desktop nav */}
         <div className="hidden items-center gap-1 md:flex">

@@ -1,7 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { getCategoryCounts, type CategoryCount } from '@/lib/api';
+import { Button } from '@/components/ui/button';
 import { Hero } from '@/components/marketing/Hero';
 import { TrustStrip } from '@/components/marketing/TrustStrip';
 import { HowItWorks } from '@/components/marketing/HowItWorks';
@@ -36,10 +38,19 @@ export default function Home() {
       <TrustStrip totalRecommendations={total} />
       <HowItWorks />
 
-      <section className="mx-auto w-full max-w-5xl px-4 py-10">
-        <div className="mb-6 flex flex-col gap-1 text-center">
-          <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">Every kind of local pro</h2>
-          <p className="text-muted-foreground">Pick a category to see who your neighbors recommend.</p>
+      <section className="mx-auto w-full max-w-5xl px-4 py-12">
+        <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
+          <div className="max-w-xl">
+            <p className="mb-3 text-xs font-bold uppercase tracking-[0.08em] text-muted-foreground">
+              Browse by category
+            </p>
+            <h2 className="text-balance font-display text-3xl font-extrabold leading-[1.06] tracking-[-0.02em] text-primary sm:text-4xl">
+              Every kind of local pro, vouched for nearby.
+            </h2>
+          </div>
+          <Button asChild variant="outline" className="rounded-full">
+            <Link href="/browse">See all categories</Link>
+          </Button>
         </div>
         <CategoryGrid items={categories} />
       </section>

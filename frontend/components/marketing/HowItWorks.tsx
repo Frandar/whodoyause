@@ -18,11 +18,16 @@ const STEPS = [
 
 export function HowItWorks() {
   return (
-    <section className="mx-auto w-full max-w-5xl px-4 py-10">
-      <h2 className="text-center text-2xl font-bold tracking-tight sm:text-3xl">
-        How it works
-      </h2>
-      <ol className="mt-8 grid gap-4 sm:grid-cols-3">
+    <section className="mx-auto w-full max-w-5xl px-4 py-12">
+      <div className="text-center">
+        <p className="mb-3 text-xs font-bold uppercase tracking-[0.08em] text-muted-foreground">
+          How it works
+        </p>
+        <h2 className="text-balance font-display text-3xl font-extrabold leading-[1.06] tracking-[-0.02em] text-primary sm:text-4xl">
+          Three steps from &ldquo;who do ya use?&rdquo; to booked.
+        </h2>
+      </div>
+      <ol className="mt-10 grid gap-4 sm:grid-cols-3">
         {STEPS.map((step) => (
           <li
             key={step.n}

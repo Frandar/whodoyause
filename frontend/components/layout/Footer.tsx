@@ -1,12 +1,13 @@
 import Link from 'next/link';
+import { Logo } from '@/components/Logo';
 
 export function Footer() {
   return (
     <footer className="bg-primary">
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 py-10 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-col gap-1">
-          <span className="text-base font-bold tracking-tight text-white">WhoDoYaUse</span>
-          <p className="text-sm text-white/60">
+        <div className="flex flex-col gap-3">
+          <Logo variant="dark" />
+          <p className="max-w-xs text-sm text-white/60">
             Good help, recommended by the people next door.
           </p>
         </div>
