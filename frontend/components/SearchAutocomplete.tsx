@@ -90,6 +90,12 @@ function Suggestions({
 
 type AutocompleteProps = {
   onSearch: (query: string) => void;
+  // Optional handler for category suggestions. When provided (e.g. the browse
+  // page), it owns navigation; otherwise we fall back to router.push (landing
+  // page → cross-page nav, where the App Router works). On the browse page,
+  // router.push to a same-path query change is a no-op in static export, so the
+  // page passes a History-API-based handler here instead.
+  onSelectCategory?: (category: string) => void;
   defaultValue?: string;
   placeholder?: string;
   autoFocus?: boolean;
@@ -101,6 +107,7 @@ type AutocompleteProps = {
 
 export function SearchAutocomplete({
   onSearch,
+  onSelectCategory,
   defaultValue = '',
   placeholder = 'Search plumbers, electricians, dentists…',
   autoFocus = false,
@@ -178,7 +185,8 @@ export function SearchAutocomplete({
     setActiveIndex(-1);
     setQuery(s.label);
     if (s.kind === 'category') {
-      router.push(`/browse?category=${encodeURIComponent(s.label)}`);
+      if (onSelectCategory) onSelectCategory(s.label);
+      else router.push(`/browse?category=${encodeURIComponent(s.label)}`);
     } else {
       onSearch(s.label);
     }

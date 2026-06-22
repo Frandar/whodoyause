@@ -5,12 +5,14 @@ import { SearchAutocomplete } from '@/components/SearchAutocomplete';
 
 export function SearchHero({
   onSearch,
+  onSelectCategory,
   defaultValue = '',
   heading,
   className,
   autoFocus = false,
 }: {
   onSearch: (query: string) => void;
+  onSelectCategory?: (category: string) => void;
   defaultValue?: string;
   heading?: React.ReactNode;
   className?: string;
@@ -27,6 +29,7 @@ export function SearchHero({
       )}
       <SearchAutocomplete
         onSearch={onSearch}
+        onSelectCategory={onSelectCategory}
         defaultValue={defaultValue}
         autoFocus={autoFocus}
         variant="default"
