@@ -3,8 +3,8 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { getCategoryCounts, type CategoryCount } from '@/lib/api';
-import { Button } from '@/components/ui/button';
 import { Hero } from '@/components/marketing/Hero';
+import { RevealObserver } from '@/components/RevealObserver';
 import { TrustStrip } from '@/components/marketing/TrustStrip';
 import { HowItWorks } from '@/components/marketing/HowItWorks';
 import { CategoryGrid } from '@/components/CategoryGrid';
@@ -34,25 +34,35 @@ export default function Home() {
 
   return (
     <>
+      <RevealObserver />
       <Hero />
       <TrustStrip totalRecommendations={total} />
       <HowItWorks />
 
-      <section className="mx-auto w-full max-w-5xl px-4 py-12">
-        <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
-          <div className="max-w-xl">
-            <p className="mb-3 text-xs font-bold uppercase tracking-[0.08em] text-muted-foreground">
-              Browse by category
-            </p>
-            <h2 className="text-balance font-display text-3xl font-extrabold leading-[1.06] tracking-[-0.02em] text-primary sm:text-4xl">
-              Every kind of local pro, vouched for nearby.
-            </h2>
+      {/* Browse-by-category band from the design reference (#categories section). */}
+      <section id="categories" className="bg-[#fffdf9] px-6 py-[clamp(64px,8vw,112px)]">
+        <div className="mx-auto w-full max-w-[1200px]">
+          <div
+            data-reveal
+            className="mb-[46px] flex flex-wrap items-end justify-between gap-5"
+          >
+            <div className="max-w-[560px]">
+              <p className="mb-3.5 text-[13.5px] font-bold uppercase tracking-[0.08em] text-[#8a9a8f]">
+                Browse by category
+              </p>
+              <h2 className="text-balance font-display text-[clamp(30px,4vw,46px)] font-extrabold leading-[1.06] tracking-[-0.02em] text-primary">
+                Every kind of local pro, vouched for nearby.
+              </h2>
+            </div>
+            <Link
+              href="/browse"
+              className="rounded-full border-[1.5px] border-primary/25 px-[22px] py-3 text-[15px] font-bold text-primary transition-colors duration-[250ms] hover:border-primary/50 hover:bg-primary/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              See all categories
+            </Link>
           </div>
-          <Button asChild variant="outline" className="rounded-full">
-            <Link href="/browse">See all categories</Link>
-          </Button>
+          <CategoryGrid items={categories} />
         </div>
-        <CategoryGrid items={categories} />
       </section>
 
       <CTASection />
