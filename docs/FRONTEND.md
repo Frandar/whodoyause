@@ -1,127 +1,147 @@
-# Frontend Design System — Neighborhood Recommendations
+# Frontend Design System — WhoDoYaUse
 
-> Reference doc for Claude Code. Governs all frontend work. Read alongside CLAUDE.md
-> and docs/MILESTONE_N.md. Aesthetic direction is **inspired by Fresha**
-> (https://www.fresha.com) — clean, trustworthy, local-marketplace feel — adapted to a
-> 2-person validation MVP. This is DIRECTION, not a pixel-clone mandate. Match complexity
-> to the milestone: M1 is a bare shell; real styling effort lands in M2.
+> Reference doc for Claude Code. Governs all frontend work. Read alongside CLAUDE.md and
+> the current milestone spec. The design direction is NO LONGER Fresha — it is the
+> **WhoDoYaUse** design captured in `frontend/design-reference/home.html` (a bundled
+> export) and its decoded form `frontend/design-reference/home-decoded.html`. That file is
+> the source of truth for look and feel. Tokens below are extracted from it; when in doubt,
+> open the reference and match it. This is a 2-person validation MVP — match complexity to
+> the milestone (M1 is a bare shell; real styling lands in M2). Do not let polish pull the
+> project back toward over-engineering.
+
+## Product name
+The product is **WhoDoYaUse** — the literal question the app answers ("who do ya use for
+an electrician?"). Use this name in the wordmark, titles, and copy. Tagline direction:
+"Recommended by your neighbors, not algorithms" / "Word of mouth, organized."
 
 ## Tech (locked)
-
 - Next.js, **static export** (`output: 'export'`). UI only — never the backend.
-- **Tailwind CSS** for all styling. No CSS-in-JS, no styled-components.
-- **shadcn/ui** for primitives where a primitive exists (Button, Input, Card, Dialog,
-  Select, Badge, Skeleton, Toast/Sonner, DropdownMenu, Form). Compose these; do not
-  hand-roll equivalents. Build custom components only for things shadcn doesn't cover
-  (e.g. the recommendation card, the search hero).
-- Icons: lucide-react.
-- Fonts: load via `next/font`.
+- **Tailwind CSS** for all styling, driven by the tokens below (define as CSS variables in
+  globals.css, map in tailwind.config).
+- **shadcn/ui** for primitives where one exists (Button, Input, Card, Dialog, Select,
+  Badge, Skeleton, Toast/Sonner, Form, DropdownMenu). Compose these; restyle them with the
+  tokens so they match the reference. Hand-build only what shadcn doesn't cover (the pro/
+  recommendation card, the search hero, category tiles).
+- Icons: lucide-react. Fonts: **next/font** (Google fonts — see Typography).
 
-## How to capture the Fresha direction accurately
-
-Before finalizing tokens, **inspect the live site yourself** rather than guessing:
-
-1. Use the Claude-in-Chrome browser tools (or ask the user to paste values) to open
-   https://www.fresha.com and read the computed primary color, font families, border
-   radii, and spacing rhythm from the rendered page / its CSS.
-2. Translate what you observe into the token system below. If you cannot inspect it,
-   use the documented starting tokens and flag that they are approximations to confirm.
-
-## Observed Fresha design language (direction to emulate)
-
-- **Clean, photo-forward, generous whitespace.** Lots of breathing room; content sits on
-  a light/white canvas. Not dense, not "dashboard-y."
-- **Prominent search as the hero.** The primary action on the landing surface is a large,
-  inviting search control. Mirror this: search is the centerpiece of the recommendations
-  experience.
-- **Rounded, soft cards** with subtle shadows for list items / results. Friendly, not sharp.
-- **Trust & social proof patterns** — ratings, reviewer names, location, counts. Our analog
-  is endorsement counts + the recommender's name (the "from your neighbors" trust signal).
-- **Confident single accent color** used for primary actions; otherwise restrained, mostly
-  neutral palette. Spend boldness on the primary CTA and the search, keep the rest quiet.
-- **Modern geometric sans typography**, medium weights, clear hierarchy. Not a serif display.
-- **Mobile-first.** Facebook-group traffic is overwhelmingly mobile; design for a ~380px
-  viewport first, then scale up.
-
-## Token system (starting point — verify against the live site, then lock)
-
-Define these as CSS variables in `globals.css` and map them in `tailwind.config`. Replace
-the hex/scale values once you've inspected Fresha; the _roles_ below stay fixed.
+## Brand palette (extracted from the reference — use exactly)
+Deep forest green is the brand's signature background; warm gold is the single accent.
 
 ```
-Color (roles — set exact values after inspection):
-  --background      near-white canvas            e.g. #FFFFFF
-  --foreground      near-black text              e.g. #1A1A1A
-  --muted           soft grey surfaces           e.g. #F4F5F7
-  --muted-foreground secondary text              e.g. #6B7280
-  --border          hairline card/input borders  e.g. #E5E7EB
-  --primary         single confident accent      (sample from Fresha's CTA)
-  --primary-foreground  text on primary          e.g. #FFFFFF
-  --ring            focus ring                    = primary at lower opacity
+--brand-green        #15493f   /* primary brand background, dark surfaces, headings on light */
+--brand-green-deep   #14241e   /* darkest text / near-black on light backgrounds */
+--brand-green-900    #0e2a20   /* deep shadows, gradient stops */
+--accent-gold        #ffc23d   /* THE accent — primary CTA, logo mark, highlights */
+--accent-gold-deep   #e3a84a   /* gold hover/pressed */
+--terracotta         #cf7d63   /* secondary warm accent, used sparingly */
 
-Radius:
-  --radius          soft, friendly                e.g. 0.75rem (cards), full for pills
+/* Light / cream surfaces */
+--cream              #faf6ef   /* warm off-white page canvas on light sections */
+--cream-alt          #fffdf9
+--surface-green-050  #eaf3ee   /* pale green tint surface */
+--surface-green-100  #e6efe7
+--border-green-100   #c7dccf   /* hairline borders on light green surfaces */
 
-Typography:
-  Display/headings  geometric sans, medium/semibold  (e.g. via next/font: a clean grotesk)
-  Body              same family or a neutral sans, regular
-  Type scale        clear steps; large hero search label, comfortable body
-  Case              sentence case everywhere (per the copy rules below)
+/* Text on dark green */
+--on-green           #ffffff
+--on-green-muted     #9fb6ab   /* muted sage text on green */
+--on-green-subtle    #7f968b
 
-Spacing & layout:
-  Generous vertical rhythm; content max-width ~ 640–760px for lists on desktop,
-  full-bleed friendly on mobile. 16px base gutters on mobile.
+/* Text on light */
+--ink                #14241e
+--ink-muted          #6a786f
+--ink-subtle         #7a887f
 
-Elevation:
-  Subtle shadows on cards (e.g. shadow-sm / a soft custom shadow). Avoid heavy drop shadows.
+--danger             #b00020
 ```
 
-## Signature element
+Usage discipline: dark forest green and cream are the two dominant fields; **gold is spent
+only on the primary CTA, the logo mark, and small highlights** (e.g. star ratings). Don't
+scatter gold. Terracotta and the purple/blue tints seen in the reference are incidental —
+keep them rare.
 
-The one memorable thing: a **prominent, inviting search bar** as the hero of the browse/
-search surface, echoing Fresha's "search your area" centerpiece — but phrased for trust
-("Find a trusted local pro your neighbors recommend"). Everything else stays quiet so this
-and the primary "Add a recommendation" CTA carry the personality.
+## Typography (extracted — use exactly)
+Two Google fonts, loaded via next/font:
+- **Bricolage Grotesque** — display/headings. Weights 600–800. Big, characterful, tight
+  tracking on the hero. This is the personality face; use it for the hero, section titles,
+  the wordmark, and big numbers.
+- **Plus Jakarta Sans** — body/UI. Weights 600/700/800 in the reference; use 400–600 for
+  running text, 600–700 for labels/buttons. All body copy, nav, cards, forms.
+
+Type scale (from the reference):
+- Hero headline: responsive `clamp(40px, 6vw, 72px)` up to `clamp(56px, 7vw, 104px)` for
+  the biggest statement lines. Bricolage 700–800, tight line-height.
+- Section titles: `clamp(30px, 4vw, 44px)`, Bricolage 700.
+- Body: 14.5–16.5px, Plus Jakarta 400–600.
+- Labels / meta / captions: 12.5–14px, Plus Jakarta 600.
+- Weights in play: 600 (medium emphasis), 700 (default bold), 800 (hero / big numbers).
+- Case: sentence case for copy; the wordmark is "WhoDoYaUse" camel-case.
+
+## Shape, elevation, spacing (extracted)
+- **Radius:** pills use `border-radius: 999px` (buttons, chips, search bar, badges);
+  cards use `12–15px` (12, 14, 15 all appear). Default card radius ~14px; pill everything
+  interactive that's a chip/CTA.
+- **Shadows:** soft, green-tinted, directional. Examples from the reference:
+  `0 4px 10px -4px rgba(8,30,22,.6)`, `0 8px 18px -8px rgba(8,30,22,.45)`,
+  `0 12px 22px -8px rgba(8,30,22,.5)`, big hero cards `0 24px 50px -24px rgba(0,0,0,.6)`.
+  Focus ring: `0 0 0 3px rgba(255,194,61,.25)` (gold glow) — reuse as the `--ring`.
+- **Spacing:** generous, airy. Rounded cards float on the green or cream field with real
+  padding. Mobile-first.
+
+## Signature elements (what makes it WhoDoYaUse, not generic)
+1. **Deep-green hero** with a huge Bricolage headline ("Find a local pro your neighbors
+   already trust.") and an **eyebrow**: "Recommended by your neighbors, not algorithms."
+2. **A prominent pill search bar** ("Find a pro") with popular-category quick chips (HVAC,
+   Lawn care, Plumbing, …) directly beneath it.
+3. **Neighbor recommendation cards** — the trust workhorse: neighbor's name + hyper-local
+   proximity line ("Maple Street · 4 doors down"), "recommends [Business]", star rating,
+   usage count ("· used 3×"), and a short quote. This proximity/trust framing is the core
+   of the brand — lean into it.
+4. **Social-proof stats** in Bricolage: "40,000+ neighbors across 200+ towns", "12,000
+   vetted pros", "4.9★ avg", "98% would book again".
+5. **"How it works" 3-step**: "Tell us what you need → See who neighbors use → Book with
+   confidence" (headline: "Three steps from 'who do ya use?' to booked.").
+6. **Category grid** — tiles with "[N] pros nearby" counts.
 
 ## Component inventory (MVP — build only what the current milestone needs)
+- **AppShell / header** — WhoDoYaUse wordmark + gold logo mark, nav (How it works,
+  Categories, Reviews, For pros), Log in, primary "Find a pro" CTA.
+- **SearchHero** — green field, Bricolage headline, pill search + popular category chips.
+  The signature element.
+- **RecommendationCard** — neighbor name, proximity line, "recommends [business]", stars,
+  usage count, optional quote, "+1"/endorse action.
+- **CategoryGrid / CategoryTile** — icon, name, "[N] pros nearby" (from the app-side seed
+  list; counts are dynamic later).
+- **AddRecommendationForm** — shadcn Form + Input + Select(category) + Textarea; dedupe
+  "+1 instead?" via Dialog/Toast.
+- **StatBand** — the big Bricolage social-proof numbers.
+- **HowItWorks** — 3-step strip.
+- **EmptyState / ZeroResults** — directive invitations, in WhoDoYaUse voice.
+- **Loading** — shadcn Skeleton for lists.
 
-- **AppShell / header** — logo/wordmark, sign-in/out, minimal nav.
-- **SearchHero** — large search input + category chips. The signature element.
-- **CategoryChips / CategoryGrid** — browse entry points (from the app-side seed list).
-- **RecommendationCard** — business name, category badge, recommender name, endorsement
-  count, optional note, "+1" action. The trust-signal workhorse.
-- **AddRecommendationForm** — shadcn Form + Input + Select(category) + Textarea(note);
-  dedupe "+1 instead?" handled via a Dialog/Toast.
-- **EmptyState / ZeroResults** — directive, not moody (see copy rules).
-- **Loading** — shadcn Skeleton for lists; never block the whole screen.
+Do NOT build: ratings-authoring UI beyond the simple endorse, business-owner dashboards,
+messaging, multi-neighborhood switching, "Book"/payments (the reference shows "Book with
+confidence" and "For pros" — these are future/marketing framing, NOT MVP features; the MVP
+is search + recommend + endorse only). Keep marketing-only sections (For pros, Pricing,
+Book) as static content or omit until validated. Challenge any request to build booking.
 
-Do NOT build: ratings/stars UI, business-owner profiles, messaging, multi-neighborhood
-switching, dark mode (unless trivial via tokens), elaborate animations.
+## Copy rules
+- Sentence case; warm, neighborly voice ("Word of mouth, organized"; "The advice you'd get
+  over the fence — searchable"; "Made for good neighbors").
+- Plain verbs; action names consistent through a flow (an "Add" button → "Recommendation
+  added" toast).
+- Zero-results is an invitation: "No one's vouched for a plumber on your street yet — be the
+  first." Not an apology.
+- Trust framing everywhere: name the neighbor and the proximity, not anonymous stars.
 
-## Copy rules (design material, not decoration)
-
-- Sentence case throughout. Plain verbs. No filler.
-- Name things by what the user does: "Add a recommendation," "Search," not system terms.
-- An action keeps its name through the flow: a "Add" button → toast "Recommendation added."
-- Zero-results is an invitation: "No recommendations for plumbers yet — be the first to add
-  one." Not an apology.
-- Errors say what happened and how to fix it, in the interface's voice.
-
-## Quality floor (non-negotiable, build it in quietly)
-
-- Responsive from ~380px up; mobile-first.
-- Visible keyboard focus on every interactive element (use the `--ring` token).
-- Respect `prefers-reduced-motion`.
-- Sufficient color contrast on text and the primary CTA.
-- Semantic HTML; shadcn primitives already handle most a11y — don't undo it.
+## Quality floor (non-negotiable)
+- Mobile-first from ~380px; the reference uses `vw`-based `clamp()` type — preserve that
+  responsiveness.
+- Visible keyboard focus using the gold `--ring`; sufficient contrast (white/sage text on
+  green, ink on cream — verify contrast ratios, especially `--on-green-muted` on green).
+- Respect `prefers-reduced-motion`. Semantic HTML; don't undo shadcn a11y.
 
 ## Restraint
-
-Spend boldness only on the search hero + primary CTA. Keep cards, forms, and chrome quiet
-and consistent. Before shipping a screen, remove one decorative thing that isn't earning its
-place. Do not let styling pull the project back toward over-engineering — the goal is a
-clean, trustworthy surface that validates the idea, shipped fast.
-
-```
-
-```
+Spend boldness on the green hero + gold CTA + neighbor cards. Keep everything else quiet.
+Match the reference; don't embellish past it. The goal is a clean, trustworthy, distinctly
+"over-the-fence" surface that validates the idea, shipped fast.

@@ -1,11 +1,12 @@
-# Neighborhood Recommendations Platform
+# WhoDoYaUse — Neighborhood Recommendations Platform
 
 ## What this is
 
-A community recommendation platform: searchable, neighbor-sourced local business
-recommendations. Replaces the repeated "who's a good electrician?" posts in neighborhood
-Facebook groups. Demand is VALIDATED (concierge test thrilled users; admins enthusiastic).
-Now building the MVP, milestone by milestone.
+WhoDoYaUse: searchable, neighbor-sourced local business recommendations. Replaces the
+repeated "who do ya use for a good electrician?" posts in neighborhood Facebook groups. The
+differentiator is trust — named neighbors with hyper-local proximity recommend pros, not
+anonymous algorithmic reviews. Demand is VALIDATED (concierge test + admin enthusiasm).
+Building the MVP milestone by milestone.
 
 ## Team
 
@@ -38,6 +39,14 @@ Optimize for LEARNING SPEED and MAINTAINABILITY, not technical elegance.
 2. VELOCITY: Authorization is one line — "valid JWT → may write." No roles, no ownership
    checks. One +1 per user is enforced by a DB unique constraint, not app logic.
 
+## Design (see docs/FRONTEND.md)
+
+Design system is WhoDoYaUse's own, defined by frontend/design-reference/home.html (the
+source of truth; decoded copy: home-decoded.html). Deep forest green #15493f fields, gold
+#ffc23d accent, cream #faf6ef surfaces; Bricolage Grotesque display + Plus Jakarta Sans
+body; pill (999px) interactive elements, 12–15px cards. Tailwind + shadcn/ui, mobile-first.
+This is NO LONGER Fresha-inspired — ignore any earlier Fresha references.
+
 ## Secrets
 
 - Frontend holds ONLY the Supabase anon key + the user's JWT.
@@ -55,7 +64,8 @@ Gate 1 passed and deployed.
 - Locked architecture, schema, API, security: @docs/ARCHITECTURE.md
 - Milestone plan + gates: @docs/MILESTONES.md
 - Current milestone spec: @docs/MILESTONE_1.md
-- Frontend design system (Fresha-inspired, shadcn + Tailwind): @docs/FRONTEND.md
+- Frontend design system (WhoDoYaUse, shadcn + Tailwind): @docs/FRONTEND.md
+- Design source of truth: frontend/design-reference/home.html (decoded: home-decoded.html)
 
 ## Tooling
 

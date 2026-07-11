@@ -17,7 +17,7 @@ export function Hero() {
         {/* Eyebrow */}
         <div className="inline-flex items-center gap-2 rounded-full border border-white/16 bg-white/10 px-3.5 py-1.5 text-[13.5px] font-semibold text-white/90">
           <MapPin className="size-3.5 shrink-0" aria-hidden />
-          Recommended by your neighbors, not algorithms
+          Magnolia
         </div>
 
         {/* Headline */}
@@ -50,8 +50,8 @@ export function Hero() {
           ))}
         </div>
 
-        {/* Trust line */}
-        <p className="text-xs text-white/45">
+        {/* Trust line — sage token: white/45 composited to 3.4:1 on green (AA fail) */}
+        <p className="text-xs text-on-green-muted">
           Free to use · No spam · Real neighbors only
         </p>
       </div>

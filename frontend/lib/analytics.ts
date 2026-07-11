@@ -10,7 +10,10 @@ export function initAnalytics() {
   if (!key) return;
   posthog.init(key, {
     api_host: process.env.NEXT_PUBLIC_POSTHOG_HOST || 'https://us.i.posthog.com',
-    capture_pageview: true, // the "visit" in the funnel
+    // 'history_change' fires $pageview on pushState/replaceState too — plain
+    // `true` only captures the initial load, silently dropping every SPA
+    // navigation (App Router links AND the browse page's manual pushState).
+    capture_pageview: 'history_change',
     person_profiles: 'identified_only',
   });
   initialized = true;

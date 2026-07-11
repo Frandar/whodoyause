@@ -35,12 +35,18 @@ export default function AddRecommendationForm({
     setSubmitting(true);
     const name = businessName.trim();
 
-    const result = await addRecommendation({
-      business_name: name,
-      category,
-      note: note.trim() || undefined,
-    });
-    setSubmitting(false);
+    let result;
+    try {
+      result = await addRecommendation({
+        business_name: name,
+        category,
+        note: note.trim() || undefined,
+      });
+    } finally {
+      // Always re-enable the form — a thrown rejection must never strand it
+      // on "Adding…" with the button disabled.
+      setSubmitting(false);
+    }
 
     if (result.ok) {
       capture('recommendation_added', { category: result.recommendation.category });
@@ -84,7 +90,7 @@ export default function AddRecommendationForm({
   const canSubmit = businessName.trim().length > 0 && category.length > 0 && !submitting;
 
   return (
-    <Card className="rounded-2xl shadow-sm">
+    <Card>
       <CardHeader>
         <CardTitle className="text-lg">Add a recommendation</CardTitle>
       </CardHeader>

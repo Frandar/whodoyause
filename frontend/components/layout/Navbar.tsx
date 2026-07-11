@@ -103,7 +103,7 @@ export function Navbar() {
               {loading ? null : signedIn ? (
                 <div className="flex flex-col gap-2">
                   {email && (
-                    <p className="px-3 text-xs text-white/50">Signed in as {email}</p>
+                    <p className="px-3 text-xs text-on-green-muted">Signed in as {email}</p>
                   )}
                   <Button
                     variant="ghost"

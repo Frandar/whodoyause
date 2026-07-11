@@ -24,9 +24,9 @@ export default function RecommendPage() {
       </div>
 
       {loading ? (
-        <Skeleton className="h-72 w-full rounded-2xl" />
+        <Skeleton className="h-72 w-full rounded-lg" />
       ) : !signedIn ? (
-        <Card className="rounded-2xl shadow-soft">
+        <Card>
           <CardContent className="flex flex-col items-center gap-3 p-8 text-center">
             <span className="flex size-11 items-center justify-center rounded-full bg-secondary text-primary">
               <LogIn className="size-5" aria-hidden />
@@ -41,7 +41,7 @@ export default function RecommendPage() {
           </CardContent>
         </Card>
       ) : added ? (
-        <Card className="rounded-2xl shadow-soft">
+        <Card>
           <CardContent className="flex flex-col items-center gap-3 p-8 text-center">
             <span className="flex size-11 items-center justify-center rounded-full bg-secondary text-success">
               <CheckCircle2 className="size-5" aria-hidden />

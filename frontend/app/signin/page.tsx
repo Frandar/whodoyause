@@ -49,7 +49,7 @@ function SignInInner() {
   return (
     <main className="mx-auto flex w-full max-w-md flex-col gap-6 px-4 py-12">
       {sent ? (
-        <Card className="rounded-2xl shadow-soft">
+        <Card>
           <CardContent className="flex flex-col items-center gap-3 p-8 text-center">
             <span className="flex size-11 items-center justify-center rounded-full bg-secondary text-primary">
               <MailCheck className="size-5" aria-hidden />
@@ -61,7 +61,7 @@ function SignInInner() {
           </CardContent>
         </Card>
       ) : (
-        <Card className="rounded-2xl shadow-soft">
+        <Card>
           <CardHeader>
             <CardTitle className="text-xl">Sign in</CardTitle>
           </CardHeader>
