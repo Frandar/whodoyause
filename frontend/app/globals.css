@@ -4,7 +4,7 @@
 /* Design tokens — forest green brand + golden amber CTA + warm cream canvas.
    Sampled from the approved design file (WhoDoYaUse Home.html). */
 :root {
-  --radius: 1.375rem; /* 22px — soft cards (design file --rad: 22px) */
+  --radius: 0.875rem; /* 14px — cards per docs/FRONTEND.md (12–15px); pills stay 999px */
 
   --background: #faf6ef;   /* warm cream canvas */
   --foreground: #14241e;   /* near-black on cream */
@@ -21,15 +21,18 @@
   --secondary-foreground: #15493f;
 
   --muted: #e6efe7;
-  --muted-foreground: #6a786f;   /* green-gray secondary text, AA-contrast */
+  --muted-foreground: #5f6d64;   /* green-gray secondary text — 5.0:1 on cream (AA) */
 
   --accent: #e6efe7;             /* hover surface (shadcn ghost/outline hover) */
   --accent-foreground: #15493f;
 
   --amber: #ffc23d;              /* golden amber — CTA button (most important action) */
+  --amber-deep: #e3a84a;         /* gold hover/pressed (FRONTEND.md --accent-gold-deep) */
   --amber-foreground: #1a1a1a;   /* near-black ink on amber */
 
-  --destructive: #d4163a;
+  --on-green-muted: #9fb6ab;     /* muted sage text on green fields — AA at small sizes */
+
+  --destructive: #b00020;        /* FRONTEND.md --danger */
   --destructive-foreground: #ffffff;
 
   --success: #1f8900;
@@ -40,7 +43,7 @@
 
   --border: #d4e1d8;             /* from rgba(20,40,30,.08) over cream canvas */
   --input: #d4e1d8;
-  --ring: #15493f;
+  --ring: #ffc23d;               /* gold focus glow — visible on green AND cream fields */
 
   /* Soft elevations — green-tinted shadows to match the brand. */
   --shadow-soft: 0 1px 2px rgb(8 30 22 / 0.04), 0 4px 16px rgb(8 30 22 / 0.06);
@@ -64,7 +67,9 @@
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-amber: var(--amber);
+  --color-amber-deep: var(--amber-deep);
   --color-amber-foreground: var(--amber-foreground);
+  --color-on-green-muted: var(--on-green-muted);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
   --color-success: var(--success);

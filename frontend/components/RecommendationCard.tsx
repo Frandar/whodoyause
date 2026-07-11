@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { ThumbsUp } from 'lucide-react';
 import { toast } from 'sonner';
 import { Card, CardContent } from '@/components/ui/card';
@@ -11,6 +12,9 @@ import { cn } from '@/lib/utils';
 import { endorse, unendorse, type Recommendation } from '@/lib/api';
 import { capture } from '@/lib/analytics';
 
+// Neighbor-first layout (design reference card): the neighbor's name leads,
+// "recommends" bridges, the business is the Bricolage payoff, and the note
+// reads as a quote. Trust framing IS the product — don't invert this.
 export function RecommendationCard({
   rec,
   signedIn,
@@ -18,6 +22,7 @@ export function RecommendationCard({
   rec: Recommendation;
   signedIn: boolean;
 }) {
+  const router = useRouter();
   const [count, setCount] = useState(rec.endorsement_count);
   const [endorsed, setEndorsed] = useState(rec.endorsed_by_me);
   const [pending, setPending] = useState(false);
@@ -32,54 +37,78 @@ export function RecommendationCard({
 
   async function toggle() {
     if (!signedIn) {
-      toast.info('Sign in to +1 a recommendation');
+      toast.info('Sign in to +1 a recommendation', {
+        action: {
+          label: 'Sign in',
+          onClick: () =>
+            router.push(
+              `/signin?next=${encodeURIComponent(
+                window.location.pathname + window.location.search,
+              )}`,
+            ),
+        },
+      });
       return;
     }
     setPending(true);
-    if (!endorsed) {
-      const r = await endorse(rec.id);
-      if (r.ok) {
-        capture('endorsement_added', { recommendation_id: rec.id });
-        setCount(r.count);
-        setEndorsed(true);
-      } else if (r.kind === 'already') {
-        setCount(r.count);
-        setEndorsed(true);
-      } else if (r.kind === 'unauthenticated') {
-        toast.error('Please sign in again');
+    try {
+      if (!endorsed) {
+        const r = await endorse(rec.id);
+        if (r.ok) {
+          capture('endorsement_added', { recommendation_id: rec.id });
+          setCount(r.count);
+          setEndorsed(true);
+        } else if (r.kind === 'already') {
+          setCount(r.count);
+          setEndorsed(true);
+        } else if (r.kind === 'unauthenticated') {
+          toast.error('Please sign in again');
+        } else {
+          toast.error("Couldn't +1");
+        }
       } else {
-        toast.error("Couldn't +1");
+        const r = await unendorse(rec.id);
+        if (r.ok) {
+          setCount(r.count);
+          setEndorsed(false);
+        } else {
+          toast.error("Couldn't undo your +1");
+        }
       }
-    } else {
-      const r = await unendorse(rec.id);
-      if (r.ok) {
-        setCount(r.count);
-        setEndorsed(false);
-      } else {
-        toast.error("Couldn't undo your +1");
-      }
+    } finally {
+      setPending(false);
     }
-    setPending(false);
   }
 
   return (
-    <Card className="rounded-2xl shadow-sm">
-      <CardContent className="flex flex-col gap-2 p-4">
+    <Card className="gap-0 py-5">
+      <CardContent className="flex flex-col gap-3 px-5">
         <div className="flex items-start justify-between gap-3">
-          <h3 className="font-semibold leading-tight">{rec.business_name}</h3>
+          <span className="flex items-center gap-2.5">
+            <Avatar name={rec.created_by_name} />
+            <span className="flex flex-col">
+              <span className="text-sm font-semibold leading-tight">
+                {rec.created_by_name}
+              </span>
+              <span className="text-xs text-muted-foreground">recommends</span>
+            </span>
+          </span>
           <Badge variant="secondary" className="shrink-0">
             {rec.category}
           </Badge>
         </div>
 
-        {rec.note && <p className="text-sm text-muted-foreground">{rec.note}</p>}
+        <h3 className="font-display text-lg font-bold leading-tight tracking-[-0.01em]">
+          {rec.business_name}
+        </h3>
 
-        <div className="flex items-center justify-between gap-3 text-sm text-muted-foreground">
-          <span className="inline-flex items-center gap-2">
-            <Avatar name={rec.created_by_name} size="sm" />
-            {rec.created_by_name}
-          </span>
+        {rec.note && (
+          <p className="rounded-lg bg-muted/60 px-3.5 py-2.5 text-sm leading-relaxed text-foreground/85">
+            &ldquo;{rec.note}&rdquo;
+          </p>
+        )}
 
+        <div className="flex justify-end">
           <Button
             type="button"
             variant={endorsed ? 'default' : 'outline'}

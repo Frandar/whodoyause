@@ -1,7 +1,13 @@
 import { getSupabase } from './supabase';
 
+// Fail loudly at build/load time — a missing base URL otherwise surfaces as a
+// cryptic "reading 'replace' of undefined" far from the actual cause.
+const RAW_API_BASE = process.env.NEXT_PUBLIC_API_BASE;
+if (!RAW_API_BASE) {
+  throw new Error('NEXT_PUBLIC_API_BASE is not set — add it to frontend/.env.local');
+}
 // Strip any trailing slash so `${API_BASE}/health` can't become `//health`.
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE!.replace(/\/+$/, '');
+const API_BASE = RAW_API_BASE.replace(/\/+$/, '');
 
 async function authHeader(): Promise<Record<string, string>> {
   const { data } = await getSupabase().auth.getSession();
@@ -67,23 +73,35 @@ export type EndorseResult =
   | { ok: false; kind: 'unauthenticated' }
   | { ok: false; kind: 'error' };
 
+// The write helpers never throw: fetch() rejects outright on network failure
+// (offline, DNS, CORS), and a rejection escaping into component handlers left
+// buttons permanently disabled. Errors come back as values like every other
+// non-ok outcome.
 export async function endorse(id: string): Promise<EndorseResult> {
-  const headers = await authHeader();
-  const res = await fetch(`${API_BASE}/recommendations/${id}/endorse`, { method: 'POST', headers });
-  if (res.ok) return { ok: true, count: (await res.json()).endorsement_count };
-  if (res.status === 409) {
-    const body = await res.json().catch(() => ({}));
-    return { ok: false, kind: 'already', count: body?.endorsement_count ?? 0 };
+  try {
+    const headers = await authHeader();
+    const res = await fetch(`${API_BASE}/recommendations/${id}/endorse`, { method: 'POST', headers });
+    if (res.ok) return { ok: true, count: (await res.json()).endorsement_count };
+    if (res.status === 409) {
+      const body = await res.json().catch(() => ({}));
+      return { ok: false, kind: 'already', count: body?.endorsement_count ?? 0 };
+    }
+    if (res.status === 401) return { ok: false, kind: 'unauthenticated' };
+    return { ok: false, kind: 'error' };
+  } catch {
+    return { ok: false, kind: 'error' };
   }
-  if (res.status === 401) return { ok: false, kind: 'unauthenticated' };
-  return { ok: false, kind: 'error' };
 }
 
 export async function unendorse(id: string): Promise<{ ok: boolean; count: number }> {
-  const headers = await authHeader();
-  const res = await fetch(`${API_BASE}/recommendations/${id}/endorse`, { method: 'DELETE', headers });
-  if (res.ok) return { ok: true, count: (await res.json()).endorsement_count };
-  return { ok: false, count: 0 };
+  try {
+    const headers = await authHeader();
+    const res = await fetch(`${API_BASE}/recommendations/${id}/endorse`, { method: 'DELETE', headers });
+    if (res.ok) return { ok: true, count: (await res.json()).endorsement_count };
+    return { ok: false, count: 0 };
+  } catch {
+    return { ok: false, count: 0 };
+  }
 }
 
 export async function addRecommendation(input: {
@@ -91,26 +109,30 @@ export async function addRecommendation(input: {
   category: string;
   note?: string;
 }): Promise<AddResult> {
-  const headers = { 'Content-Type': 'application/json', ...(await authHeader()) };
-  const res = await fetch(`${API_BASE}/recommendations`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(input),
-  });
+  try {
+    const headers = { 'Content-Type': 'application/json', ...(await authHeader()) };
+    const res = await fetch(`${API_BASE}/recommendations`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(input),
+    });
 
-  if (res.status === 201) {
-    return { ok: true, recommendation: await res.json() };
+    if (res.status === 201) {
+      return { ok: true, recommendation: await res.json() };
+    }
+    if (res.status === 409) {
+      const body = await res.json().catch(() => ({}));
+      return { ok: false, kind: 'duplicate', existingId: body?.existing_recommendation_id ?? null };
+    }
+    if (res.status === 401) {
+      return { ok: false, kind: 'unauthenticated' };
+    }
+    if (res.status === 400) {
+      const body = await res.json().catch(() => ({}));
+      return { ok: false, kind: 'invalid', message: body?.error?.message ?? 'Invalid input' };
+    }
+    return { ok: false, kind: 'error', message: `Something went wrong (${res.status})` };
+  } catch {
+    return { ok: false, kind: 'error', message: 'Network error — check your connection and try again' };
   }
-  if (res.status === 409) {
-    const body = await res.json().catch(() => ({}));
-    return { ok: false, kind: 'duplicate', existingId: body?.existing_recommendation_id ?? null };
-  }
-  if (res.status === 401) {
-    return { ok: false, kind: 'unauthenticated' };
-  }
-  if (res.status === 400) {
-    const body = await res.json().catch(() => ({}));
-    return { ok: false, kind: 'invalid', message: body?.error?.message ?? 'Invalid input' };
-  }
-  return { ok: false, kind: 'error', message: `Something went wrong (${res.status})` };
 }
