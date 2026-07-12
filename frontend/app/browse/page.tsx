@@ -31,10 +31,21 @@ function readParams(): Params {
 // not just the marketing page — must carry the WhoDoYaUse identity.
 function BrowseHeroBand({ children }: { children: React.ReactNode }) {
   return (
-    <div className="bg-primary">
-      <div className="mx-auto flex w-full max-w-2xl flex-col items-center gap-5 px-4 py-8 text-center sm:py-10">
-        <h1 className="max-w-lg text-balance text-[clamp(1.6rem,4.5vw,2.25rem)] font-extrabold leading-[1.08] tracking-[-0.02em] text-white">
-          Find a trusted local pro your neighbors recommend
+    <div className="relative overflow-hidden bg-primary">
+      {/* Radial glow from the reference hero/pros bands. */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute -right-[120px] -top-[120px] size-[460px] rounded-full bg-[radial-gradient(circle_at_center,rgb(255_255_255/0.08),transparent_65%)]"
+      />
+      <div className="relative mx-auto flex w-full max-w-2xl flex-col items-center gap-5 px-4 py-10 text-center sm:py-14">
+        <p className="inline-flex items-center gap-2 rounded-full border border-white/[0.16] bg-white/[0.12] py-[7px] pl-[11px] pr-3.5 text-[13.5px] font-semibold text-[#eaf3ee]">
+          <span className="text-sm text-amber" aria-hidden>
+            ★
+          </span>
+          Recommended by your neighbors, not algorithms
+        </p>
+        <h1 className="max-w-xl text-balance text-[clamp(1.75rem,4.5vw,2.5rem)] font-extrabold leading-[1.05] tracking-[-0.025em] text-white">
+          Find a trusted local pro your <span className="text-amber">neighbors</span> recommend
         </h1>
         {children}
       </div>

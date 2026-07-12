@@ -92,7 +92,7 @@ export default function AddRecommendationForm({
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-lg">Add a recommendation</CardTitle>
+        <CardTitle className="font-display text-xl font-bold">Add a recommendation</CardTitle>
       </CardHeader>
       <CardContent>
         <form onSubmit={onSubmit} className="flex flex-col gap-4">

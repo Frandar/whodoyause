@@ -20,12 +20,14 @@ const PLACEHOLDER_CATEGORIES: CategoryCount[] = CATEGORIES.map((category) => ({
 export default function Home() {
   const [categories, setCategories] = useState<CategoryCount[]>(PLACEHOLDER_CATEGORIES);
   const [total, setTotal] = useState<number | null>(null);
+  const [covered, setCovered] = useState(0);
 
   useEffect(() => {
     getCategoryCounts()
       .then((data) => {
         setCategories(data);
         setTotal(data.reduce((sum, c) => sum + c.count, 0));
+        setCovered(data.filter((c) => c.count > 0).length);
       })
       .catch(() => {
         // Counts are decorative on the landing page — leave placeholders on error.
@@ -36,7 +38,7 @@ export default function Home() {
     <>
       <RevealObserver />
       <Hero />
-      <TrustStrip totalRecommendations={total} />
+      <TrustStrip totalRecommendations={total} categoriesCovered={covered} />
       <HowItWorks />
 
       {/* Browse-by-category band from the design reference (#categories section). */}

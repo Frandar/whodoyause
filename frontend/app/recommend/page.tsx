@@ -16,9 +16,14 @@ export default function RecommendPage() {
 
   return (
     <main className="mx-auto flex w-full max-w-md flex-col gap-6 px-4 py-10">
-      <div className="flex flex-col gap-1">
-        <h1 className="text-2xl font-bold tracking-tight">Recommend a pro</h1>
-        <p className="text-sm text-muted-foreground">
+      <div className="flex flex-col gap-2">
+        <p className="text-[13.5px] font-bold uppercase tracking-[0.08em] text-[#8a9a8f]">
+          Pay it forward
+        </p>
+        <h1 className="font-display text-[clamp(28px,4vw,36px)] font-extrabold leading-[1.06] tracking-[-0.02em] text-primary">
+          Recommend a pro
+        </h1>
+        <p className="text-[15.5px] leading-[1.6] text-[#52635a]">
           Help a neighbor out — add a local business you trust.
         </p>
       </div>
@@ -28,10 +33,10 @@ export default function RecommendPage() {
       ) : !signedIn ? (
         <Card>
           <CardContent className="flex flex-col items-center gap-3 p-8 text-center">
-            <span className="flex size-11 items-center justify-center rounded-full bg-secondary text-primary">
+            <span className="flex size-12 items-center justify-center rounded-[14px] bg-secondary text-primary">
               <LogIn className="size-5" aria-hidden />
             </span>
-            <p className="font-semibold">Sign in to add a recommendation</p>
+            <p className="font-display text-lg font-bold">Sign in to add a recommendation</p>
             <p className="text-sm text-muted-foreground">
               It only takes a magic link — no password.
             </p>
@@ -43,10 +48,10 @@ export default function RecommendPage() {
       ) : added ? (
         <Card>
           <CardContent className="flex flex-col items-center gap-3 p-8 text-center">
-            <span className="flex size-11 items-center justify-center rounded-full bg-secondary text-success">
+            <span className="flex size-12 items-center justify-center rounded-[14px] bg-secondary text-success">
               <CheckCircle2 className="size-5" aria-hidden />
             </span>
-            <p className="font-semibold">Recommendation added</p>
+            <p className="font-display text-lg font-bold">Recommendation added</p>
             <p className="text-sm text-muted-foreground">
               {added.business_name} · {added.category}
             </p>

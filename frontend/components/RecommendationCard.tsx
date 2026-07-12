@@ -87,10 +87,10 @@ export function RecommendationCard({
           <span className="flex items-center gap-2.5">
             <Avatar name={rec.created_by_name} />
             <span className="flex flex-col">
-              <span className="text-sm font-semibold leading-tight">
+              <span className="text-[15px] font-bold leading-tight">
                 {rec.created_by_name}
               </span>
-              <span className="text-xs text-muted-foreground">recommends</span>
+              <span className="text-[13px] text-[#7a887f]">recommends</span>
             </span>
           </span>
           <Badge variant="secondary" className="shrink-0">
@@ -98,12 +98,12 @@ export function RecommendationCard({
           </Badge>
         </div>
 
-        <h3 className="font-display text-lg font-bold leading-tight tracking-[-0.01em]">
+        <h3 className="font-display text-xl font-extrabold leading-tight tracking-[-0.01em]">
           {rec.business_name}
         </h3>
 
         {rec.note && (
-          <p className="rounded-lg bg-muted/60 px-3.5 py-2.5 text-sm leading-relaxed text-foreground/85">
+          <p className="rounded-xl bg-[#f1f6f1] px-3.5 py-3 text-sm leading-[1.5] text-[#33433b]">
             &ldquo;{rec.note}&rdquo;
           </p>
         )}
