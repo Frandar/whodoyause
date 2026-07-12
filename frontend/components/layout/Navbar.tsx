@@ -1,127 +1,138 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
 import { Menu, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/components/AuthProvider';
-import { Button } from '@/components/ui/button';
 import { Logo } from '@/components/Logo';
 
+// Reference nav links (anchors on the homepage) plus the real recommend flow.
 const NAV_LINKS = [
-  { href: '/browse', label: 'Browse' },
+  { href: '/#how', label: 'How it works' },
+  { href: '/#categories', label: 'Categories' },
   { href: '/recommend', label: 'Recommend a pro' },
 ] as const;
 
 export function Navbar() {
-  const pathname = usePathname();
   const { signedIn, email, signOut, loading } = useAuth();
   const [open, setOpen] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
 
-  function isActive(href: string) {
-    return pathname === href || pathname.startsWith(`${href}/`);
-  }
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 10);
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
 
   return (
-    <header className="sticky top-0 z-40 bg-primary">
+    <header
+      className={cn(
+        'sticky top-0 z-40 border-b bg-[rgb(250_246_239/0.92)] backdrop-blur-xl backdrop-saturate-[1.8] transition-[box-shadow,border-color] duration-300',
+        scrolled
+          ? 'border-[rgb(20_40_30/0.10)] shadow-[0_10px_30px_-22px_rgb(8_30_22/0.55)]'
+          : 'border-transparent',
+      )}
+    >
       <nav
         aria-label="Primary"
-        className="mx-auto flex h-14 w-full max-w-6xl items-center justify-between gap-4 px-4"
+        className="mx-auto flex w-full max-w-[1200px] items-center gap-3 px-4 py-[15px] min-[880px]:gap-[22px] min-[880px]:px-6"
       >
-        <Logo variant="dark" />
+        <Logo variant="light" />
 
-        {/* Desktop nav */}
-        <div className="hidden items-center gap-1 md:flex">
+        {/* Desktop nav (reference hides links below 880px) */}
+        <div className="ml-[18px] hidden gap-[30px] min-[880px]:flex">
           {NAV_LINKS.map((link) => (
             <Link
               key={link.href}
               href={link.href}
-              aria-current={isActive(link.href) ? 'page' : undefined}
-              className={cn(
-                'rounded-full px-3 py-1.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50',
-                isActive(link.href)
-                  ? 'bg-white/15 text-white'
-                  : 'text-white/70 hover:bg-white/10 hover:text-white',
-              )}
+              className="rounded text-[15px] font-semibold text-[#3c4b44] transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               {link.label}
             </Link>
           ))}
-          <div className="ml-2">
-            {loading ? null : signedIn ? (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => signOut()}
-                className="text-white/70 hover:bg-white/10 hover:text-white"
-              >
-                Sign out
-              </Button>
-            ) : (
-              <Button asChild size="sm" variant="amber" className="rounded-full">
-                <Link href="/signin">Sign in</Link>
-              </Button>
-            )}
-          </div>
         </div>
 
-        {/* Mobile toggle */}
-        <button
-          type="button"
-          onClick={() => setOpen((v) => !v)}
-          aria-expanded={open}
-          aria-controls="mobile-menu"
-          aria-label={open ? 'Close menu' : 'Open menu'}
-          className="inline-flex size-9 items-center justify-center rounded-md text-white hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50 md:hidden"
-        >
-          {open ? <X className="size-5" aria-hidden /> : <Menu className="size-5" aria-hidden />}
-        </button>
+        <div className="ml-auto flex items-center gap-3.5">
+          {loading ? null : signedIn ? (
+            <button
+              type="button"
+              onClick={() => signOut()}
+              className="hidden rounded text-[15px] font-bold text-primary transition-colors hover:text-primary/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring min-[880px]:inline-flex"
+            >
+              Sign out
+            </button>
+          ) : (
+            <Link
+              href="/signin"
+              className="hidden rounded text-[15px] font-bold text-primary transition-colors hover:text-primary/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring min-[880px]:inline-flex"
+            >
+              Log in
+            </Link>
+          )}
+          <Link
+            href="/browse"
+            className="rounded-full bg-amber px-5 py-[11px] text-[15px] font-bold text-amber-foreground shadow-[0_8px_18px_-8px_rgb(8_30_22/0.45)] transition-all duration-[250ms] hover:-translate-y-0.5 hover:brightness-[1.04] hover:shadow-[0_12px_22px_-8px_rgb(8_30_22/0.5)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            Find a pro
+          </Link>
+
+          {/* Mobile toggle */}
+          <button
+            type="button"
+            onClick={() => setOpen((v) => !v)}
+            aria-expanded={open}
+            aria-controls="mobile-menu"
+            aria-label={open ? 'Close menu' : 'Open menu'}
+            className="inline-flex size-[42px] items-center justify-center rounded-xl border border-[rgb(20_40_30/0.14)] bg-white text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring min-[880px]:hidden"
+          >
+            {open ? <X className="size-5" aria-hidden /> : <Menu className="size-5" aria-hidden />}
+          </button>
+        </div>
       </nav>
 
       {/* Mobile menu */}
       {open && (
-        <div id="mobile-menu" className="border-t border-white/10 bg-primary md:hidden">
-          <div className="mx-auto flex w-full max-w-6xl flex-col gap-1 px-4 py-3">
+        <div id="mobile-menu" className="min-[880px]:hidden">
+          <div className="flex flex-col gap-1 px-[18px] pb-[18px] pt-1.5">
             {NAV_LINKS.map((link) => (
               <Link
                 key={link.href}
                 href={link.href}
                 onClick={() => setOpen(false)}
-                aria-current={isActive(link.href) ? 'page' : undefined}
-                className={cn(
-                  'rounded-lg px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50',
-                  isActive(link.href)
-                    ? 'bg-white/15 text-white'
-                    : 'text-white/70 hover:bg-white/10 hover:text-white',
-                )}
+                className="rounded-xl px-3 py-3 text-base font-semibold text-[#22332c] transition-colors hover:bg-[rgb(20_40_30/0.05)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 {link.label}
               </Link>
             ))}
-            <div className="mt-1 border-t border-white/10 pt-2">
-              {loading ? null : signedIn ? (
-                <div className="flex flex-col gap-2">
-                  {email && (
-                    <p className="px-3 text-xs text-on-green-muted">Signed in as {email}</p>
-                  )}
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => { setOpen(false); signOut(); }}
-                    className="w-full rounded-full text-white/70 hover:bg-white/10 hover:text-white"
-                  >
-                    Sign out
-                  </Button>
-                </div>
-              ) : (
-                <Button asChild size="sm" variant="amber" className="w-full rounded-full">
-                  <Link href="/signin" onClick={() => setOpen(false)}>
-                    Sign in
-                  </Link>
-                </Button>
-              )}
-            </div>
+            {loading ? null : signedIn ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setOpen(false);
+                  signOut();
+                }}
+                className="rounded-xl px-3 py-3 text-left text-base font-semibold text-[#22332c] transition-colors hover:bg-[rgb(20_40_30/0.05)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                Sign out{email ? ` (${email})` : ''}
+              </button>
+            ) : (
+              <Link
+                href="/signin"
+                onClick={() => setOpen(false)}
+                className="rounded-xl px-3 py-3 text-base font-semibold text-[#22332c] transition-colors hover:bg-[rgb(20_40_30/0.05)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                Log in
+              </Link>
+            )}
+            <Link
+              href="/browse"
+              onClick={() => setOpen(false)}
+              className="mt-2 rounded-full bg-amber p-3.5 text-center text-base font-bold text-amber-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              Find a pro
+            </Link>
           </div>
         </div>
       )}

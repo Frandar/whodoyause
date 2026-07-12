@@ -97,11 +97,40 @@
   * {
     @apply border-border outline-ring/50;
   }
+  html {
+    scroll-behavior: smooth;
+  }
   body {
     @apply bg-background text-foreground;
+    /* Reference root uses overflow-x:hidden; `clip` avoids breaking position:sticky. */
+    overflow-x: clip;
   }
   h1, h2, h3 {
     font-family: var(--font-display);
+  }
+}
+
+/* Scroll-reveal (design reference data-reveal): elements fade and rise into
+   view; RevealObserver adds .is-revealed. translate/box-shadow are included in
+   the transition so hover lifts on the same elements stay smooth without extra
+   utility classes. */
+[data-reveal] {
+  transition:
+    opacity 0.7s cubic-bezier(0.22, 0.61, 0.36, 1),
+    transform 0.7s cubic-bezier(0.22, 0.61, 0.36, 1),
+    translate 0.35s ease,
+    box-shadow 0.35s ease,
+    border-color 0.25s ease,
+    background-color 0.25s ease;
+}
+[data-reveal]:not(.is-revealed) {
+  opacity: 0;
+  transform: translateY(24px);
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-reveal]:not(.is-revealed) {
+    opacity: 1;
+    transform: none;
   }
 }
 
