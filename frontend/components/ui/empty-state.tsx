@@ -22,18 +22,18 @@ function EmptyState({
     <div
       data-slot="empty-state"
       className={cn(
-        "flex flex-col items-center gap-3 rounded-lg border border-dashed border-border bg-muted/40 px-6 py-12 text-center",
+        "flex flex-col items-center gap-3 rounded-lg border border-dashed border-[rgb(20_40_30/0.15)] bg-muted/40 px-6 py-12 text-center",
         className
       )}
       {...props}
     >
       {Icon && (
-        <span className="flex size-11 items-center justify-center rounded-full bg-background text-muted-foreground shadow-soft">
+        <span className="flex size-12 items-center justify-center rounded-[14px] bg-secondary text-primary">
           <Icon className="size-5" aria-hidden />
         </span>
       )}
       <div className="flex flex-col gap-1">
-        <p className="font-semibold">{title}</p>
+        <p className="font-display text-lg font-bold">{title}</p>
         {description && (
           <p className="text-sm text-muted-foreground">{description}</p>
         )}
