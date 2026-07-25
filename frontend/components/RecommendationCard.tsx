@@ -2,13 +2,14 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ThumbsUp, Phone, Mail, Globe, ExternalLink, User, MessageSquarePlus } from 'lucide-react';
+import { ThumbsUp, Phone, Mail, Globe, ExternalLink, User, MessageSquarePlus, PencilLine } from 'lucide-react';
 import { toast } from 'sonner';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Avatar } from '@/components/ui/avatar';
 import { Textarea } from '@/components/ui/textarea';
+import { SuggestEditDialog } from '@/components/SuggestEditDialog';
 import { cn } from '@/lib/utils';
 import { endorse, unendorse, type EndorsementNote, type Recommendation } from '@/lib/api';
 import { capture } from '@/lib/analytics';
@@ -37,6 +38,7 @@ export function RecommendationCard({
   const [addingNote, setAddingNote] = useState(false);
   const [noteText, setNoteText] = useState('');
   const [savingNote, setSavingNote] = useState(false);
+  const [suggestOpen, setSuggestOpen] = useState(false);
 
   // Resync to server truth when the list is refetched (the card instance is
   // reused across refetches via a stable key, so useState's initial value is
@@ -102,6 +104,14 @@ export function RecommendationCard({
       return;
     }
     setAddingNote(true);
+  }
+
+  function openSuggest() {
+    if (!signedIn) {
+      promptSignIn('Sign in to suggest an edit');
+      return;
+    }
+    setSuggestOpen(true);
   }
 
   async function saveNote() {
@@ -284,7 +294,21 @@ export function RecommendationCard({
             </Button>
           </div>
         )}
+
+        {/* Quiet correction path — users propose fixes, they don't self-edit. */}
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={openSuggest}
+            className="inline-flex cursor-pointer items-center gap-1 rounded-full px-1.5 py-0.5 text-[12.5px] font-medium text-[#7a887f] transition-colors hover:text-[#15493f] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ffc23d] focus-visible:ring-offset-2"
+          >
+            <PencilLine className="size-3.5" aria-hidden />
+            Suggest an edit
+          </button>
+        </div>
       </CardContent>
+
+      <SuggestEditDialog rec={rec} open={suggestOpen} onOpenChange={setSuggestOpen} />
     </Card>
   );
 }

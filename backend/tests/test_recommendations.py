@@ -536,3 +536,98 @@ def test_endorse_route_dispatches_with_auth():
         resp = lambda_handler(_event("POST", f"/recommendations/{VALID_ID}/endorse", headers={"authorization": "Bearer ok"}), None)
     assert resp["statusCode"] == 200
     assert json.loads(resp["body"])["endorsement_count"] == 1
+
+
+# --- suggest an edit ---
+
+SUGGESTION_ID = "77777777-7777-7777-7777-777777777777"
+
+
+def _suggest_conn(captured):
+    def execute_fn(sql, params):
+        if "insert into app_user" in sql:
+            return _Cursor(None)
+        if "insert into edit_suggestion" in sql:
+            captured["params"] = params
+            return _Cursor((SUGGESTION_ID,))
+        raise AssertionError(sql)
+    return _Conn(execute_fn)
+
+
+def test_suggest_edit_invalid_uuid_returns_404():
+    result = rec.suggest_edit(CLAIMS, "not-a-uuid", {"phone": "555"})
+    assert result["statusCode"] == 404
+
+
+def test_suggest_edit_requires_a_correction_or_message():
+    with pytest.raises(rec.InvalidInput):
+        rec.suggest_edit(CLAIMS, VALID_ID, {})
+
+
+def test_suggest_edit_message_too_long_raises():
+    with pytest.raises(rec.InvalidInput):
+        rec.suggest_edit(CLAIMS, VALID_ID, {"message": "x" * (rec.SUGGESTION_MESSAGE_MAX + 1)})
+
+
+def test_suggest_edit_success_stores_normalized_proposal(capsys):
+    captured = {}
+    with patch.object(rec.db, "get_connection", return_value=_suggest_conn(captured)):
+        result = rec.suggest_edit(
+            CLAIMS, VALID_ID,
+            {"phone": "555-1234", "website": "joesplumbing.com", "message": "wrong number"},
+        )
+    assert result["statusCode"] == 201
+    assert result["body"]["id"] == SUGGESTION_ID
+    # proposed is stored as a Jsonb-wrapped dict: rec_id, user, message, proposed
+    proposed = captured["params"][3].obj
+    assert proposed["phone"] == "555-1234"
+    assert proposed["website"] == "https://joesplumbing.com"  # URL normalized
+    assert captured["params"][2] == "wrong number"
+    # Founders' review queue is surfaced in CloudWatch.
+    assert "EDIT_SUGGESTION" in capsys.readouterr().out
+
+
+def test_suggest_edit_missing_recommendation_returns_404():
+    def execute_fn(sql, params):
+        if "insert into app_user" in sql:
+            return _Cursor(None)
+        if "insert into edit_suggestion" in sql:
+            raise psycopg.errors.ForeignKeyViolation()
+        raise AssertionError(sql)
+    with patch.object(rec.db, "get_connection", return_value=_Conn(execute_fn)):
+        result = rec.suggest_edit(CLAIMS, VALID_ID, {"phone": "555"})
+    assert result["statusCode"] == 404
+
+
+def test_suggest_edit_route_requires_auth():
+    resp = lambda_handler(
+        _event("POST", f"/recommendations/{VALID_ID}/suggest-edit",
+               body=json.dumps({"phone": "555"})),
+        None,
+    )
+    assert resp["statusCode"] == 401
+
+
+def test_suggest_edit_route_dispatches_with_auth():
+    captured = {}
+    with patch("src.handler.verify_token", return_value=CLAIMS), \
+         patch.object(rec.db, "get_connection", return_value=_suggest_conn(captured)):
+        resp = lambda_handler(
+            _event("POST", f"/recommendations/{VALID_ID}/suggest-edit",
+                   headers={"authorization": "Bearer ok"},
+                   body=json.dumps({"email": "correct@ex.com"})),
+            None,
+        )
+    assert resp["statusCode"] == 201
+    assert json.loads(resp["body"])["id"] == SUGGESTION_ID
+
+
+def test_suggest_edit_route_malformed_json_returns_400():
+    with patch("src.handler.verify_token", return_value=CLAIMS):
+        resp = lambda_handler(
+            _event("POST", f"/recommendations/{VALID_ID}/suggest-edit",
+                   headers={"authorization": "Bearer ok"}, body="{not json"),
+            None,
+        )
+    assert resp["statusCode"] == 400
+    assert json.loads(resp["body"])["error"]["code"] == "invalid_json"

@@ -136,6 +136,39 @@ export async function unendorse(id: string): Promise<{ ok: boolean; count: numbe
   }
 }
 
+export type SuggestEditInput = { message?: string } & ContactInput;
+
+export type SuggestEditResult =
+  | { ok: true }
+  | { ok: false; kind: 'unauthenticated' }
+  | { ok: false; kind: 'invalid'; message: string }
+  | { ok: false; kind: 'error'; message?: string };
+
+// Queue a proposed correction for the founders to review. Never edits the live
+// record. Like the other write helpers, it returns errors as values.
+export async function suggestEdit(
+  id: string,
+  input: SuggestEditInput,
+): Promise<SuggestEditResult> {
+  try {
+    const headers = { 'Content-Type': 'application/json', ...(await authHeader()) };
+    const res = await fetch(`${API_BASE}/recommendations/${id}/suggest-edit`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(input),
+    });
+    if (res.status === 201) return { ok: true };
+    if (res.status === 401) return { ok: false, kind: 'unauthenticated' };
+    if (res.status === 400) {
+      const body = await res.json().catch(() => ({}));
+      return { ok: false, kind: 'invalid', message: body?.error?.message ?? 'Invalid input' };
+    }
+    return { ok: false, kind: 'error', message: `Something went wrong (${res.status})` };
+  } catch {
+    return { ok: false, kind: 'error', message: 'Network error — check your connection and try again' };
+  }
+}
+
 export async function addRecommendation(
   input: {
     business_name: string;
