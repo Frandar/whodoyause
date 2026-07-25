@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { SearchX, Compass } from 'lucide-react';
+import { SearchX, Compass, Plus } from 'lucide-react';
 import { capture } from '@/lib/analytics';
 import { useAuth } from '@/components/AuthProvider';
 import {
@@ -49,6 +49,29 @@ function BrowseHeroBand({ children }: { children: React.ReactNode }) {
         </h1>
         {children}
       </div>
+    </div>
+  );
+}
+
+// Closes the list with an invitation to contribute — the supply side of the
+// product. When browsing a category we carry it into the form so recommending
+// another pro in that category is one tap. Sits below the cards so it never
+// competes with reading existing recommendations.
+function RecommendMoreCta({ category }: { category: string }) {
+  const href = category
+    ? `/recommend?category=${encodeURIComponent(category)}`
+    : '/recommend';
+  return (
+    <div className="mt-1 flex flex-col items-center gap-3 rounded-[14px] border border-dashed border-[#c7dccf] bg-[#f6faf5] px-5 py-6 text-center">
+      <p className="text-[14.5px] font-semibold text-[#15493f]">
+        {category ? `Know another great ${category}?` : 'Know a pro worth recommending?'}
+      </p>
+      <Button asChild className="rounded-full">
+        <Link href={href}>
+          <Plus className="size-4" aria-hidden />
+          Recommend a pro
+        </Link>
+      </Button>
     </div>
   );
 }
@@ -237,6 +260,7 @@ function BrowseInner() {
               {results.map((r) => (
                 <RecommendationCard key={r.id} rec={r} signedIn={signedIn} />
               ))}
+              <RecommendMoreCta category={mode === 'browse' ? category : ''} />
             </div>
           ) : mode === 'search' ? (
             <EmptyState
