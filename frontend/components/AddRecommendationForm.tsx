@@ -44,13 +44,21 @@ const CONTACT_FIELDS: {
 
 export default function AddRecommendationForm({
   onAdded,
+  initialCategory,
 }: {
   // Receives the new record on a fresh add; called with no argument when the
   // dedupe "+1 it instead" path runs (nothing new was created).
   onAdded?: (rec?: Recommendation) => void;
+  // Prefills the category (e.g. arriving from a category browse page). Ignored
+  // if it isn't a known seed category.
+  initialCategory?: string;
 }) {
   const [businessName, setBusinessName] = useState('');
-  const [category, setCategory] = useState('');
+  const [category, setCategory] = useState(
+    initialCategory && (CATEGORIES as readonly string[]).includes(initialCategory)
+      ? initialCategory
+      : '',
+  );
   const [note, setNote] = useState('');
   const [contact, setContact] = useState<Record<ContactKey, string>>({
     phone: '',

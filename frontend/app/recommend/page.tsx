@@ -10,9 +10,18 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { Recommendation } from '@/lib/api';
 
+// Prefill the category when arriving from a category browse page
+// (/recommend?category=Plumber). Read lazily on the client — the form is behind
+// the auth gate, so this only runs once window is available.
+function readCategoryParam(): string {
+  if (typeof window === 'undefined') return '';
+  return new URLSearchParams(window.location.search).get('category') ?? '';
+}
+
 export default function RecommendPage() {
   const { signedIn, loading, email } = useAuth();
   const [added, setAdded] = useState<Recommendation | null>(null);
+  const [initialCategory] = useState(readCategoryParam);
 
   return (
     <main className="mx-auto flex w-full max-w-md flex-col gap-6 px-4 py-10">
@@ -70,7 +79,10 @@ export default function RecommendPage() {
       ) : (
         <>
           {email && <p className="text-sm text-muted-foreground">Signed in as {email}</p>}
-          <AddRecommendationForm onAdded={(rec) => rec && setAdded(rec)} />
+          <AddRecommendationForm
+            initialCategory={initialCategory}
+            onAdded={(rec) => rec && setAdded(rec)}
+          />
         </>
       )}
     </main>
