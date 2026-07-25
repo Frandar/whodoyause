@@ -226,7 +226,9 @@ def test_list_anonymous_omits_endorsement_join():
         rec.list_by_category("Plumber")
     assert "false as endorsed_by_me" in captured["sql"]
     assert "left join endorsement me" not in captured["sql"]
-    assert captured["params"] == ("Plumber",)
+    assert "limit %s offset %s" in captured["sql"]
+    # category, then the default page bounds.
+    assert captured["params"] == ("Plumber", 20, 0)
 
 
 def test_list_with_viewer_joins_their_endorsement():
@@ -240,9 +242,41 @@ def test_list_with_viewer_joins_their_endorsement():
     with patch.object(rec.db, "get_connection", return_value=_Conn(execute_fn)):
         result = rec.list_by_category("Plumber", viewer)
     assert "left join endorsement me" in captured["sql"]
-    # Join param precedes the WHERE param.
-    assert captured["params"] == (viewer, "Plumber")
+    # Join param precedes the WHERE param, then the page bounds.
+    assert captured["params"] == (viewer, "Plumber", 20, 0)
     assert result["body"][0]["endorsed_by_me"] is True
+
+
+def test_list_by_category_applies_limit_and_offset():
+    captured = {}
+    def execute_fn(sql, params):
+        captured["params"] = params
+        return _Cursor(rows=[])
+    with patch.object(rec.db, "get_connection", return_value=_Conn(execute_fn)):
+        rec.list_by_category("Plumber", None, limit=5, offset=10)
+    assert captured["params"] == ("Plumber", 5, 10)
+
+
+def test_parse_pagination_defaults_and_clamps():
+    assert rec.parse_pagination({}) == (rec.DEFAULT_PAGE_SIZE, 0)
+    assert rec.parse_pagination({"limit": "5", "offset": "10"}) == (5, 10)
+    # Over the cap → clamped; junk/negatives → safe defaults.
+    assert rec.parse_pagination({"limit": "999"}) == (rec.MAX_PAGE_SIZE, 0)
+    assert rec.parse_pagination({"limit": "0"}) == (1, 0)
+    assert rec.parse_pagination({"limit": "abc", "offset": "-4"}) == (rec.DEFAULT_PAGE_SIZE, 0)
+
+
+def test_list_handler_passes_pagination():
+    captured = {}
+    def execute_fn(sql, params):
+        captured["params"] = params
+        return _Cursor(rows=[])
+    event = _event("GET", "/recommendations")
+    event["queryStringParameters"] = {"category": "Plumber", "limit": "5", "offset": "10"}
+    with patch.object(rec.db, "get_connection", return_value=_Conn(execute_fn)):
+        resp = lambda_handler(event, None)
+    assert resp["statusCode"] == 200
+    assert captured["params"] == ("Plumber", 5, 10)
 
 
 def test_category_counts_includes_all_seed_categories():

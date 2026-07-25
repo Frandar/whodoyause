@@ -8,6 +8,8 @@ from src.categories import CATEGORIES, CATEGORY_SET
 BUSINESS_NAME_MAX = 200
 NOTE_MAX = 1000
 QUERY_MAX = 100
+DEFAULT_PAGE_SIZE = 20
+MAX_PAGE_SIZE = 50
 PHONE_MAX = 40
 EMAIL_MAX = 200
 WEBSITE_MAX = 300
@@ -216,17 +218,39 @@ def _list_select(user_id: str | None) -> str:
     )
 
 
-def list_by_category(category: str, user_id: str | None = None) -> dict:
-    """Public: recommendations in a category, ranked by endorsements (US4).
-    A valid JWT is optional; when present it populates endorsed_by_me."""
+def parse_pagination(params: dict) -> tuple[int, int]:
+    """Clamp ?limit/?offset query params to safe bounds. A bad value falls back
+    to the default rather than erroring — pagination is a convenience, not input
+    worth rejecting the request over."""
+    def _int(value, default: int) -> int:
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return default
+
+    limit = max(1, min(_int(params.get("limit"), DEFAULT_PAGE_SIZE), MAX_PAGE_SIZE))
+    offset = max(0, _int(params.get("offset"), 0))
+    return limit, offset
+
+
+def list_by_category(
+    category: str,
+    user_id: str | None = None,
+    limit: int = DEFAULT_PAGE_SIZE,
+    offset: int = 0,
+) -> dict:
+    """Public: one page of recommendations in a category, ranked by endorsements
+    (US4). A valid JWT is optional; when present it populates endorsed_by_me.
+    The client pages by requesting the next offset until it gets a short page."""
     if category not in CATEGORY_SET:
         raise InvalidInput("unknown category")
     # Join param (if any) precedes the WHERE param — see _list_select.
-    params = ([user_id] if user_id else []) + [category]
+    params = ([user_id] if user_id else []) + [category, limit, offset]
     with db.get_connection() as conn:
         rows = conn.execute(
             _list_select(user_id) + " where r.category = %s "
-            "order by r.endorsement_count desc, r.created_at desc",
+            "order by r.endorsement_count desc, r.created_at desc "
+            "limit %s offset %s",
             tuple(params),
         ).fetchall()
     return {"statusCode": 200, "body": [_to_summary(r) for r in rows]}
