@@ -11,7 +11,7 @@ import { Avatar } from '@/components/ui/avatar';
 import { Textarea } from '@/components/ui/textarea';
 import { SuggestEditDialog } from '@/components/SuggestEditDialog';
 import { cn } from '@/lib/utils';
-import { endorse, unendorse, type EndorsementNote, type Recommendation } from '@/lib/api';
+import { deleteNote, endorse, unendorse, type EndorsementNote, type Recommendation } from '@/lib/api';
 import { capture } from '@/lib/analytics';
 
 const ENDORSEMENT_NOTE_MAX = 1000;
@@ -39,6 +39,12 @@ export function RecommendationCard({
   const [noteText, setNoteText] = useState('');
   const [savingNote, setSavingNote] = useState(false);
   const [suggestOpen, setSuggestOpen] = useState(false);
+
+  // The viewer's own +1 note, if any — gets edit/delete controls, and its
+  // presence turns "Add your take" into an edit affordance instead.
+  const myNote = notes.find((n) => n.is_mine);
+  // Show the viewer's own note first so its controls are always in the preview.
+  const orderedNotes = myNote ? [myNote, ...notes.filter((n) => !n.is_mine)] : notes;
 
   // Resync to server truth when the list is refetched (the card instance is
   // reused across refetches via a stable key, so useState's initial value is
@@ -89,6 +95,9 @@ export function RecommendationCard({
         if (r.ok) {
           setCount(r.count);
           setEndorsed(false);
+          // Removing the +1 deletes the endorsement server-side, and the note
+          // rode on it — drop it locally too so the card stays truthful.
+          setNotes((prev) => prev.filter((n) => !n.is_mine));
         } else {
           toast.error("Couldn't undo your +1");
         }
@@ -98,11 +107,13 @@ export function RecommendationCard({
     }
   }
 
-  function openNoteBox() {
+  // Opens the note editor — empty to add, or seeded with the existing note to edit.
+  function openNoteBox(seed = '') {
     if (!signedIn) {
       promptSignIn('Sign in to add your take');
       return;
     }
+    setNoteText(seed);
     setAddingNote(true);
   }
 
@@ -117,6 +128,7 @@ export function RecommendationCard({
   async function saveNote() {
     const text = noteText.trim();
     if (!text) return;
+    const editing = !!myNote;
     setSavingNote(true);
     try {
       // A note implicitly +1s (the backend upserts the endorsement), so reflect
@@ -124,13 +136,17 @@ export function RecommendationCard({
       const r = await endorse(rec.id, text);
       if (r.ok) {
         capture('endorsement_added', { recommendation_id: rec.id, has_note: true });
-        setNotes((prev) => [...prev, { name: 'You', note: text }]);
-        setNotesExpanded(true); // so their just-added take is visible past the preview
+        // One note per user: replace mine if it exists, else add it — mine first
+        // so it's always visible with its controls (not hidden past the preview).
+        setNotes((prev) => [
+          { name: 'You', note: text, is_mine: true },
+          ...prev.filter((n) => !n.is_mine),
+        ]);
         setCount(r.count);
         setEndorsed(true);
         setNoteText('');
         setAddingNote(false);
-        toast.success('Thanks for your take');
+        toast.success(editing ? 'Your note was updated' : 'Thanks for your take');
       } else if (r.kind === 'unauthenticated') {
         toast.error('Please sign in again');
       } else {
@@ -138,6 +154,16 @@ export function RecommendationCard({
       }
     } finally {
       setSavingNote(false);
+    }
+  }
+
+  async function removeNote() {
+    const r = await deleteNote(rec.id);
+    if (r.ok) {
+      setNotes((prev) => prev.filter((n) => !n.is_mine));
+      toast.success('Your note was removed');
+    } else {
+      toast.error("Couldn't remove your note");
     }
   }
 
@@ -181,14 +207,36 @@ export function RecommendationCard({
 
         {/* Neighbor +1 notes — the trust workhorse: stacked, attributed quotes.
             Collapsed to a preview so a popular pro's card stays scannable. */}
-        {(notesExpanded ? notes : notes.slice(0, NOTE_PREVIEW_COUNT)).map((n, i) => (
+        {(notesExpanded ? orderedNotes : orderedNotes.slice(0, NOTE_PREVIEW_COUNT)).map((n, i) => (
           <figure
-            key={`${n.name}-${i}`}
-            className="rounded-xl bg-[#f1f6f1] px-3.5 py-3 text-sm leading-[1.5] text-[#33433b]"
+            key={n.is_mine ? 'mine' : `${n.name}-${i}`}
+            className={cn(
+              'rounded-xl bg-[#f1f6f1] px-3.5 py-3 text-sm leading-[1.5] text-[#33433b]',
+              n.is_mine && 'ring-1 ring-[#c7dccf]',
+            )}
           >
             <blockquote>&ldquo;{n.note}&rdquo;</blockquote>
-            <figcaption className="mt-1 text-[12.5px] font-semibold text-[#7a887f]">
-              — {n.name}
+            <figcaption className="mt-1 flex flex-wrap items-center gap-2 text-[12.5px] font-semibold text-[#7a887f]">
+              <span>— {n.is_mine ? 'You' : n.name}</span>
+              {n.is_mine && !addingNote && (
+                <span className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => openNoteBox(n.note)}
+                    className="cursor-pointer rounded-full text-[#15493f] underline-offset-2 transition-colors hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ffc23d] focus-visible:ring-offset-2"
+                  >
+                    Edit
+                  </button>
+                  <span aria-hidden>·</span>
+                  <button
+                    type="button"
+                    onClick={removeNote}
+                    className="cursor-pointer rounded-full text-[#b00020] underline-offset-2 transition-colors hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ffc23d] focus-visible:ring-offset-2"
+                  >
+                    Delete
+                  </button>
+                </span>
+              )}
             </figcaption>
           </figure>
         ))}
@@ -265,20 +313,24 @@ export function RecommendationCard({
                 onClick={saveNote}
                 disabled={savingNote || noteText.trim().length === 0}
               >
-                {savingNote ? 'Saving…' : 'Post take'}
+                {savingNote ? 'Saving…' : myNote ? 'Save note' : 'Post take'}
               </Button>
             </div>
           </div>
         ) : (
           <div className="flex items-center justify-between gap-3">
-            <button
-              type="button"
-              onClick={openNoteBox}
-              className="-ml-2.5 inline-flex cursor-pointer items-center gap-1.5 rounded-full px-2.5 py-1 text-[13px] font-semibold text-[#15493f] transition-colors hover:bg-[#eaf3ee] hover:text-[#0e2a20] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ffc23d] focus-visible:ring-offset-2"
-            >
-              <MessageSquarePlus className="size-4" aria-hidden />
-              Add your take
-            </button>
+            {myNote ? (
+              <span />
+            ) : (
+              <button
+                type="button"
+                onClick={() => openNoteBox()}
+                className="-ml-2.5 inline-flex cursor-pointer items-center gap-1.5 rounded-full px-2.5 py-1 text-[13px] font-semibold text-[#15493f] transition-colors hover:bg-[#eaf3ee] hover:text-[#0e2a20] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ffc23d] focus-visible:ring-offset-2"
+              >
+                <MessageSquarePlus className="size-4" aria-hidden />
+                Add your take
+              </button>
+            )}
             <Button
               type="button"
               variant={endorsed ? 'default' : 'outline'}

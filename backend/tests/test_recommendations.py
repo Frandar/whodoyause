@@ -242,8 +242,8 @@ def test_list_with_viewer_joins_their_endorsement():
     with patch.object(rec.db, "get_connection", return_value=_Conn(execute_fn)):
         result = rec.list_by_category("Plumber", viewer)
     assert "left join endorsement me" in captured["sql"]
-    # Join param precedes the WHERE param, then the page bounds.
-    assert captured["params"] == (viewer, "Plumber", 20, 0)
+    # Viewer appears twice (is_mine subquery, then join), then WHERE + page bounds.
+    assert captured["params"] == (viewer, viewer, "Plumber", 20, 0)
     assert result["body"][0]["endorsed_by_me"] is True
 
 
@@ -358,8 +358,8 @@ def test_search_with_viewer_orders_params_join_query_category():
         return _Cursor(rows=[])
     with patch.object(rec.db, "get_connection", return_value=_Conn(execute_fn)):
         rec.search("plumber", "Plumber", viewer)
-    # join param (viewer) → query → category
-    assert captured["params"] == (viewer, "plumber", "Plumber")
+    # viewer (is_mine subquery) → viewer (join) → query → category
+    assert captured["params"] == (viewer, viewer, "plumber", "Plumber")
 
 
 def test_search_zero_results_logs_content_gap(capsys):
@@ -536,6 +536,57 @@ def test_endorse_route_dispatches_with_auth():
         resp = lambda_handler(_event("POST", f"/recommendations/{VALID_ID}/endorse", headers={"authorization": "Bearer ok"}), None)
     assert resp["statusCode"] == 200
     assert json.loads(resp["body"])["endorsement_count"] == 1
+
+
+# --- delete / edit a note (US3) ---
+
+def test_delete_note_invalid_uuid_returns_404():
+    result = rec.delete_note(CLAIMS, "not-a-uuid")
+    assert result["statusCode"] == 404
+
+
+def test_delete_note_clears_note_keeps_endorsement():
+    captured = {}
+    def execute_fn(sql, params):
+        captured["sql"] = sql
+        captured["params"] = params
+        return _Cursor(None)
+    with patch.object(rec.db, "get_connection", return_value=_Conn(execute_fn)):
+        result = rec.delete_note(CLAIMS, VALID_ID)
+    assert result["statusCode"] == 200
+    # Clears the note only — never deletes the endorsement row (the +1 stays).
+    assert "update endorsement set note = null" in captured["sql"]
+    assert "delete from endorsement" not in captured["sql"]
+    assert captured["params"] == (VALID_ID, CLAIMS["sub"])
+
+
+def test_delete_note_route_requires_auth():
+    resp = lambda_handler(_event("DELETE", f"/recommendations/{VALID_ID}/note"), None)
+    assert resp["statusCode"] == 401
+
+
+def test_delete_note_route_dispatches_with_auth():
+    def execute_fn(sql, params):
+        return _Cursor(None)
+    with patch("src.handler.verify_token", return_value=CLAIMS), \
+         patch.object(rec.db, "get_connection", return_value=_Conn(execute_fn)):
+        resp = lambda_handler(
+            _event("DELETE", f"/recommendations/{VALID_ID}/note",
+                   headers={"authorization": "Bearer ok"}),
+            None,
+        )
+    assert resp["statusCode"] == 200
+
+
+def test_list_with_viewer_flags_is_mine_in_notes_sql():
+    viewer = "88888888-8888-8888-8888-888888888888"
+    captured = {}
+    def execute_fn(sql, params):
+        captured["sql"] = sql
+        return _Cursor(rows=[])
+    with patch.object(rec.db, "get_connection", return_value=_Conn(execute_fn)):
+        rec.list_by_category("Plumber", viewer)
+    assert "'is_mine', (e.user_id = %s)" in captured["sql"]
 
 
 # --- suggest an edit ---
