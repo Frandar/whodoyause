@@ -67,6 +67,20 @@ class _Conn:
         return self._execute_fn(sql, params)
 
 
+def _summary_row(
+    rec_id, business, category, note, count, name, endorsed,
+    phone=None, email=None, website=None, contact_name=None,
+    social_link=None, endorsement_notes=None,
+):
+    """Build a list/search SELECT row matching _list_select's column order:
+    base cols, endorsed_by_me, the 5 contact cols, then endorsement_notes json."""
+    return (
+        rec_id, business, category, note, count, name, endorsed,
+        phone, email, website, contact_name, social_link,
+        [] if endorsement_notes is None else endorsement_notes,
+    )
+
+
 def test_create_success():
     created = datetime.datetime(2026, 6, 9, tzinfo=datetime.timezone.utc)
     rec_id = "22222222-2222-2222-2222-222222222222"
@@ -75,7 +89,9 @@ def test_create_success():
         if "insert into app_user" in sql:
             return _Cursor(None)
         if "insert into recommendation" in sql:
-            return _Cursor((rec_id, "Joe Plumbing", "Plumber", "great work", 0, created))
+            # 6 base cols + the 5 contact cols, matching create()'s RETURNING clause.
+            return _Cursor((rec_id, "Joe Plumbing", "Plumber", "great work", 0, created,
+                            None, None, None, None, None))
         raise AssertionError(f"unexpected SQL: {sql}")
 
     with patch.object(rec.db, "get_connection", return_value=_Conn(execute_fn)):
@@ -85,6 +101,44 @@ def test_create_success():
     assert result["body"]["id"] == rec_id
     assert result["body"]["endorsement_count"] == 0
     assert result["body"]["created_by_name"] == "mike@example.com"
+    assert result["body"]["endorsement_notes"] == []
+
+
+def test_create_with_contact_fields_normalizes_url_and_roundtrips():
+    created = datetime.datetime(2026, 6, 9, tzinfo=datetime.timezone.utc)
+    rec_id = "22222222-2222-2222-2222-222222222222"
+    captured = {}
+
+    def execute_fn(sql, params):
+        if "insert into app_user" in sql:
+            return _Cursor(None)
+        if "insert into recommendation" in sql:
+            captured["params"] = params
+            # Echo the persisted contact values back in RETURNING-column order.
+            return _Cursor((rec_id, "Joe Plumbing", "Plumber", None, 0, created,
+                            "555-1234", "joe@ex.com", "https://joeplumbing.com",
+                            "Joe", "https://facebook.com/joe"))
+        raise AssertionError(f"unexpected SQL: {sql}")
+
+    with patch.object(rec.db, "get_connection", return_value=_Conn(execute_fn)):
+        result = rec.create(CLAIMS, {
+            "business_name": "Joe Plumbing", "category": "Plumber",
+            "phone": "555-1234", "email": "joe@ex.com",
+            "website": "joeplumbing.com",  # bare domain → https:// prepended
+            "contact_name": "Joe", "social_link": "https://facebook.com/joe",
+        })
+
+    assert result["statusCode"] == 201
+    assert result["body"]["phone"] == "555-1234"
+    assert result["body"]["website"] == "https://joeplumbing.com"
+    assert result["body"]["contact_name"] == "Joe"
+    # The bare domain was normalized before hitting the INSERT params.
+    assert "https://joeplumbing.com" in captured["params"]
+
+
+def test_create_contact_field_too_long_raises():
+    with pytest.raises(rec.InvalidInput):
+        rec.create(CLAIMS, {"business_name": "Joe", "category": "Plumber", "phone": "9" * 100})
 
 
 def test_create_dedupe_returns_409_with_existing_id():
@@ -146,8 +200,8 @@ def test_list_by_category_unknown_raises():
 
 def test_list_by_category_ranked():
     rows = [
-        ("a", "Top Plumber", "Plumber", None, 5, "Mike", False),
-        ("b", "Joe Plumbing", "Plumber", "solid", 2, "Dana", False),
+        _summary_row("a", "Top Plumber", "Plumber", None, 5, "Mike", False),
+        _summary_row("b", "Joe Plumbing", "Plumber", "solid", 2, "Dana", False),
     ]
     def execute_fn(sql, params):
         assert "order by r.endorsement_count desc" in sql
@@ -177,7 +231,7 @@ def test_list_anonymous_omits_endorsement_join():
 
 def test_list_with_viewer_joins_their_endorsement():
     viewer = "55555555-5555-5555-5555-555555555555"
-    rows = [("a", "Top Plumber", "Plumber", None, 5, "Mike", True)]
+    rows = [_summary_row("a", "Top Plumber", "Plumber", None, 5, "Mike", True)]
     captured = {}
     def execute_fn(sql, params):
         captured["sql"] = sql
@@ -239,7 +293,7 @@ def test_search_unknown_category_raises():
 
 
 def test_search_uses_websearch_tsquery_and_ranks():
-    rows = [("a", "Ace Plumbing", "Plumber", None, 4, "Mike", False)]
+    rows = [_summary_row("a", "Ace Plumbing", "Plumber", None, 4, "Mike", False)]
     captured = {}
     def execute_fn(sql, params):
         captured["sql"] = sql
@@ -362,6 +416,71 @@ def test_unendorse_returns_decremented_count():
         result = rec.unendorse(CLAIMS, VALID_ID)
     assert result["statusCode"] == 200
     assert result["body"]["endorsement_count"] == 0
+
+
+def test_endorse_with_note_upserts_and_returns_count():
+    captured = {}
+
+    def execute_fn(sql, params):
+        if "insert into app_user" in sql:
+            return _Cursor(None)
+        if "insert into endorsement" in sql:
+            captured["sql"] = sql
+            captured["params"] = params
+            return _Cursor(None)
+        if "select endorsement_count" in sql:
+            return _Cursor(row=(2,))
+        raise AssertionError(sql)
+
+    with patch.object(rec.db, "get_connection", return_value=_Conn(execute_fn)):
+        result = rec.endorse(CLAIMS, VALID_ID, note="Fixed our leak same day")
+
+    assert result["statusCode"] == 200
+    assert result["body"]["endorsement_count"] == 2
+    # Note path upserts so it never dead-ends on an existing +1.
+    assert "on conflict" in captured["sql"]
+    assert captured["params"] == (VALID_ID, CLAIMS["sub"], "Fixed our leak same day")
+
+
+def test_endorse_note_too_long_raises():
+    with pytest.raises(rec.InvalidInput):
+        rec.endorse(CLAIMS, VALID_ID, note="x" * (rec.ENDORSEMENT_NOTE_MAX + 1))
+
+
+def test_endorse_route_passes_note_from_body():
+    captured = {}
+
+    def execute_fn(sql, params):
+        if "insert into app_user" in sql:
+            return _Cursor(None)
+        if "insert into endorsement" in sql:
+            captured["params"] = params
+            return _Cursor(None)
+        if "select endorsement_count" in sql:
+            return _Cursor(row=(1,))
+        raise AssertionError(sql)
+
+    with patch("src.handler.verify_token", return_value=CLAIMS), \
+         patch.object(rec.db, "get_connection", return_value=_Conn(execute_fn)):
+        resp = lambda_handler(
+            _event("POST", f"/recommendations/{VALID_ID}/endorse",
+                   headers={"authorization": "Bearer ok"},
+                   body=json.dumps({"note": "great with old pipes"})),
+            None,
+        )
+    assert resp["statusCode"] == 200
+    assert captured["params"][2] == "great with old pipes"
+
+
+def test_endorse_route_malformed_json_returns_400():
+    with patch("src.handler.verify_token", return_value=CLAIMS):
+        resp = lambda_handler(
+            _event("POST", f"/recommendations/{VALID_ID}/endorse",
+                   headers={"authorization": "Bearer ok"}, body="{not json"),
+            None,
+        )
+    assert resp["statusCode"] == 400
+    assert json.loads(resp["body"])["error"]["code"] == "invalid_json"
 
 
 def test_endorse_requires_auth():

@@ -116,7 +116,15 @@ def lambda_handler(event: dict, _context) -> dict:
                 claims = verify_token(_auth_header(event))
                 rec_id = segments[1]
                 if method == "POST":
-                    result = recommendations.endorse(claims, rec_id)
+                    try:
+                        body = _json_body(event)
+                    except (ValueError, json.JSONDecodeError):
+                        return _response(400, {"error": {"code": "invalid_json", "message": "Malformed JSON body"}})
+                    note = (body.get("note") or "").strip() or None
+                    try:
+                        result = recommendations.endorse(claims, rec_id, note)
+                    except recommendations.InvalidInput as exc:
+                        return _response(400, {"error": {"code": "invalid_input", "message": str(exc)}})
                 else:
                     result = recommendations.unendorse(claims, rec_id)
                 return _response(result["statusCode"], result["body"])
