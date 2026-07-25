@@ -24,6 +24,20 @@ import {
 // Kept flat and data-driven so the markup stays short and the fields stay easy.
 type ContactKey = 'phone' | 'email' | 'website' | 'contact_name' | 'social_link';
 
+// Live US-style phone mask: format digits as the user types so the expected
+// shape is obvious. Kept dependency-free and lenient — we strip to digits, drop
+// a leading US country code, and cap at 10 digits. (Numbers outside this shape
+// are rare for a neighborhood tool; the backend still stores whatever we send.)
+function formatUsPhone(value: string): string {
+  let digits = value.replace(/\D/g, '');
+  if (digits.length === 11 && digits.startsWith('1')) digits = digits.slice(1);
+  digits = digits.slice(0, 10);
+  if (digits.length === 0) return '';
+  if (digits.length < 4) return `(${digits}`;
+  if (digits.length < 7) return `(${digits.slice(0, 3)}) ${digits.slice(3)}`;
+  return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+}
+
 const CONTACT_FIELDS: {
   key: ContactKey;
   label: string;
@@ -31,8 +45,10 @@ const CONTACT_FIELDS: {
   type?: string;
   inputMode?: 'tel' | 'email' | 'url';
   maxLength: number;
+  // Optional live formatter applied on each keystroke (e.g. the phone mask).
+  format?: (value: string) => string;
 }[] = [
-  { key: 'phone', label: 'Phone', placeholder: '(555) 123-4567', type: 'tel', inputMode: 'tel', maxLength: 40 },
+  { key: 'phone', label: 'Phone', placeholder: '(555) 123-4567', type: 'tel', inputMode: 'tel', maxLength: 40, format: formatUsPhone },
   { key: 'email', label: 'Email', placeholder: 'name@example.com', type: 'email', inputMode: 'email', maxLength: 200 },
   // No type="url" on the link fields: native URL validation rejects bare domains
   // like "joesplumbing.com", but the backend prepends https:// for us. inputMode
@@ -218,7 +234,12 @@ export default function AddRecommendationForm({
                       type={field.type ?? 'text'}
                       inputMode={field.inputMode}
                       value={contact[field.key]}
-                      onChange={(e) => setContactField(field.key, e.target.value)}
+                      onChange={(e) =>
+                        setContactField(
+                          field.key,
+                          field.format ? field.format(e.target.value) : e.target.value,
+                        )
+                      }
                       maxLength={field.maxLength}
                       placeholder={field.placeholder}
                     />
