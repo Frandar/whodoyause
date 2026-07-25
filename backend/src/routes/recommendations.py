@@ -8,6 +8,23 @@ from src.categories import CATEGORIES, CATEGORY_SET
 BUSINESS_NAME_MAX = 200
 NOTE_MAX = 1000
 QUERY_MAX = 100
+PHONE_MAX = 40
+EMAIL_MAX = 200
+WEBSITE_MAX = 300
+CONTACT_NAME_MAX = 120
+SOCIAL_MAX = 300
+ENDORSEMENT_NOTE_MAX = 1000
+
+# Optional contact fields on a recommendation: (body key, column, max length).
+CONTACT_FIELDS = (
+    ("phone", "phone", PHONE_MAX),
+    ("email", "email", EMAIL_MAX),
+    ("website", "website", WEBSITE_MAX),
+    ("contact_name", "contact_name", CONTACT_NAME_MAX),
+    ("social_link", "social_link", SOCIAL_MAX),
+)
+# Contact fields that hold URLs — bare domains get https:// prepended so links work.
+_URL_FIELDS = {"website", "social_link"}
 
 
 class InvalidInput(Exception):
@@ -26,6 +43,29 @@ def _require_str(body: dict, key: str) -> str:
     if not isinstance(value, str):
         raise InvalidInput(f"{key} must be a string")
     return value.strip()
+
+
+def _normalize_url(value: str) -> str:
+    """Prepend https:// to a bare domain so the link is clickable. We keep this
+    deliberately light — no strict URL validation (that just causes drop-off)."""
+    if value and "://" not in value:
+        return "https://" + value
+    return value
+
+
+def _contact_fields(body: dict) -> dict:
+    """Parse, length-check and lightly normalize the optional contact fields.
+    Returns {column: value_or_None}. Raises InvalidInput on an over-length field."""
+    values: dict = {}
+    for key, column, max_len in CONTACT_FIELDS:
+        value = _require_str(body, key) or None
+        if value is not None:
+            if len(value) > max_len:
+                raise InvalidInput(f"{key} is too long")
+            if column in _URL_FIELDS:
+                value = _normalize_url(value)
+        values[column] = value
+    return values
 
 
 def _ensure_app_user(conn, claims: dict) -> None:
@@ -57,17 +97,24 @@ def create(claims: dict, body: dict) -> dict:
     if note is not None and len(note) > NOTE_MAX:
         raise InvalidInput("note is too long")
 
+    contact = _contact_fields(body)  # {column: value_or_None}; raises on over-length
+
     user_id = claims["sub"]
     display_name = _display_name(claims)
+
+    contact_cols = [column for _, column, _ in CONTACT_FIELDS]
 
     with db.get_connection() as conn:
         _ensure_app_user(conn, claims)
         try:
             row = conn.execute(
-                "insert into recommendation (business_name, category, note, created_by) "
-                "values (%s, %s, %s, %s) "
-                "returning id, business_name, category, note, endorsement_count, created_at",
-                (business_name, category, note, user_id),
+                "insert into recommendation "
+                "(business_name, category, note, created_by, "
+                + ", ".join(contact_cols) + ") "
+                "values (%s, %s, %s, %s, " + ", ".join(["%s"] * len(contact_cols)) + ") "
+                "returning id, business_name, category, note, endorsement_count, created_at, "
+                + ", ".join(contact_cols),
+                (business_name, category, note, user_id, *(contact[c] for c in contact_cols)),
             ).fetchone()
         except psycopg.errors.UniqueViolation:
             existing = conn.execute(
@@ -86,7 +133,8 @@ def create(claims: dict, body: dict) -> dict:
                 },
             }
 
-    rec_id, bn, cat, nt, count, created_at = row
+    rec_id, bn, cat, nt, count, created_at = row[:6]
+    contact_values = dict(zip(contact_cols, row[6:]))
     return {
         "statusCode": 201,
         "body": {
@@ -97,12 +145,28 @@ def create(claims: dict, body: dict) -> dict:
             "endorsement_count": count,
             "created_by_name": display_name,
             "created_at": created_at.isoformat(),
+            "endorsement_notes": [],
+            **contact_values,
         },
     }
 
 
 def _to_summary(row) -> dict:
-    rec_id, business_name, category, note, count, created_by_name, endorsed_by_me = row
+    (
+        rec_id,
+        business_name,
+        category,
+        note,
+        count,
+        created_by_name,
+        endorsed_by_me,
+        phone,
+        email,
+        website,
+        contact_name,
+        social_link,
+        endorsement_notes,
+    ) = row
     return {
         "id": str(rec_id),
         "business_name": business_name,
@@ -111,7 +175,25 @@ def _to_summary(row) -> dict:
         "endorsement_count": count,
         "created_by_name": created_by_name,
         "endorsed_by_me": bool(endorsed_by_me),
+        "phone": phone,
+        "email": email,
+        "website": website,
+        "contact_name": contact_name,
+        "social_link": social_link,
+        # psycopg loads the json_agg result as a Python list of {name, note} dicts.
+        "endorsement_notes": endorsement_notes or [],
     }
+
+
+# Neighbor +1 notes, aggregated per recommendation. Correlated (uses r.id, no bound
+# param) so it doesn't affect the endorsed_by_me join-param ordering below.
+_ENDORSEMENT_NOTES_SQL = (
+    "(select coalesce(json_agg(json_build_object('name', eu.display_name, 'note', e.note) "
+    "order by e.created_at), '[]') "
+    "from endorsement e join app_user eu on eu.id = e.user_id "
+    "where e.recommendation_id = r.id and e.note is not null and e.note <> '') "
+    "as endorsement_notes"
+)
 
 
 def _list_select(user_id: str | None) -> str:
@@ -127,8 +209,10 @@ def _list_select(user_id: str | None) -> str:
         join = ""
     return (
         "select r.id, r.business_name, r.category, r.note, r.endorsement_count, "
-        "u.display_name, " + endorsed + " as endorsed_by_me "
-        "from recommendation r join app_user u on u.id = r.created_by" + join
+        "u.display_name, " + endorsed + " as endorsed_by_me, "
+        "r.phone, r.email, r.website, r.contact_name, r.social_link, "
+        + _ENDORSEMENT_NOTES_SQL +
+        " from recommendation r join app_user u on u.id = r.created_by" + join
     )
 
 
@@ -210,20 +294,38 @@ def _endorsement_count(conn, recommendation_id: str) -> int:
     return row[0] if row else 0
 
 
-def endorse(claims: dict, recommendation_id: str) -> dict:
-    """+1 a recommendation (US3). One per user via the endorsement unique
-    constraint — on a violation we return 409 (no check-then-insert)."""
+def endorse(claims: dict, recommendation_id: str, note: str | None = None) -> dict:
+    """+1 a recommendation (US3), optionally with a note ("add your take").
+
+    Without a note it's the fast path: plain insert, one per user via the unique
+    constraint — a repeat returns 409 (no check-then-insert).
+
+    With a note we upsert (on conflict update the note) so a neighbor can add or
+    edit their take even after they've already +1'd — it never dead-ends on 409.
+    On a fresh row the count trigger fires (an implicit +1); on conflict the note
+    is updated and the count is untouched (no double count)."""
     if not _is_uuid(recommendation_id):
         return {"statusCode": 404, "body": {"error": {"code": "not_found", "message": "Recommendation not found"}}}
+    if note is not None and len(note) > ENDORSEMENT_NOTE_MAX:
+        raise InvalidInput("note is too long")
 
     with db.get_connection() as conn:
         _ensure_app_user(conn, claims)
         try:
-            conn.execute(
-                "insert into endorsement (recommendation_id, user_id) values (%s, %s)",
-                (recommendation_id, claims["sub"]),
-            )
+            if note:
+                conn.execute(
+                    "insert into endorsement (recommendation_id, user_id, note) "
+                    "values (%s, %s, %s) "
+                    "on conflict (recommendation_id, user_id) do update set note = excluded.note",
+                    (recommendation_id, claims["sub"], note),
+                )
+            else:
+                conn.execute(
+                    "insert into endorsement (recommendation_id, user_id) values (%s, %s)",
+                    (recommendation_id, claims["sub"]),
+                )
         except psycopg.errors.UniqueViolation:
+            # Only reachable on the no-note fast path (the upsert absorbs conflicts).
             return {
                 "statusCode": 409,
                 "body": {

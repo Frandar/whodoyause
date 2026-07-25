@@ -1,10 +1,12 @@
 'use client';
 
 import { useState } from 'react';
+import { ChevronDown } from 'lucide-react';
 import { toast } from 'sonner';
 import { CATEGORIES } from '@/lib/categories';
 import { addRecommendation, endorse, type Recommendation } from '@/lib/api';
 import { capture } from '@/lib/analytics';
+import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -18,6 +20,25 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 
+// Optional contact fields, rendered behind the "Add contact details" disclosure.
+// Kept flat and data-driven so the markup stays short and the fields stay easy.
+type ContactKey = 'phone' | 'email' | 'website' | 'contact_name' | 'social_link';
+
+const CONTACT_FIELDS: {
+  key: ContactKey;
+  label: string;
+  placeholder: string;
+  type?: string;
+  inputMode?: 'tel' | 'email' | 'url';
+  maxLength: number;
+}[] = [
+  { key: 'phone', label: 'Phone', placeholder: '(555) 123-4567', type: 'tel', inputMode: 'tel', maxLength: 40 },
+  { key: 'email', label: 'Email', placeholder: 'name@example.com', type: 'email', inputMode: 'email', maxLength: 200 },
+  { key: 'website', label: 'Website', placeholder: 'joesplumbing.com', type: 'url', inputMode: 'url', maxLength: 300 },
+  { key: 'contact_name', label: 'Who to ask for', placeholder: 'e.g. Joe', maxLength: 120 },
+  { key: 'social_link', label: 'Social link', placeholder: 'facebook.com/…', type: 'url', inputMode: 'url', maxLength: 300 },
+];
+
 export default function AddRecommendationForm({
   onAdded,
 }: {
@@ -28,12 +49,28 @@ export default function AddRecommendationForm({
   const [businessName, setBusinessName] = useState('');
   const [category, setCategory] = useState('');
   const [note, setNote] = useState('');
+  const [contact, setContact] = useState<Record<ContactKey, string>>({
+    phone: '',
+    email: '',
+    website: '',
+    contact_name: '',
+    social_link: '',
+  });
+  const [showContact, setShowContact] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+
+  const setContactField = (key: ContactKey, value: string) =>
+    setContact((prev) => ({ ...prev, [key]: value }));
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSubmitting(true);
     const name = businessName.trim();
+
+    // Only send contact fields the recommender actually filled in.
+    const contactPayload = Object.fromEntries(
+      CONTACT_FIELDS.map(({ key }) => [key, contact[key].trim() || undefined]),
+    );
 
     let result;
     try {
@@ -41,6 +78,7 @@ export default function AddRecommendationForm({
         business_name: name,
         category,
         note: note.trim() || undefined,
+        ...contactPayload,
       });
     } finally {
       // Always re-enable the form — a thrown rejection must never strand it
@@ -49,13 +87,19 @@ export default function AddRecommendationForm({
     }
 
     if (result.ok) {
-      capture('recommendation_added', { category: result.recommendation.category });
+      const hasContact = CONTACT_FIELDS.some(({ key }) => contact[key].trim().length > 0);
+      capture('recommendation_added', {
+        category: result.recommendation.category,
+        has_contact: hasContact,
+      });
       toast.success('Recommendation added', {
         description: `${result.recommendation.business_name} · ${result.recommendation.category}`,
       });
       setBusinessName('');
       setCategory('');
       setNote('');
+      setContact({ phone: '', email: '', website: '', contact_name: '', social_link: '' });
+      setShowContact(false);
       onAdded?.(result.recommendation);
     } else if (result.kind === 'duplicate') {
       const existingId = result.existingId;
@@ -135,6 +179,42 @@ export default function AddRecommendationForm({
               placeholder="Why do you recommend them?"
               className="min-h-20"
             />
+          </div>
+
+          <div className="flex flex-col gap-3">
+            <button
+              type="button"
+              onClick={() => setShowContact((v) => !v)}
+              aria-expanded={showContact}
+              aria-controls="contact-details"
+              className="flex items-center gap-1.5 self-start text-sm font-semibold text-[#15493f] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ffc23d] focus-visible:ring-offset-2 rounded-full"
+            >
+              <ChevronDown
+                className={cn('size-4 transition-transform', showContact && 'rotate-180')}
+                aria-hidden
+              />
+              Add contact details{' '}
+              <span className="font-normal text-muted-foreground">(optional)</span>
+            </button>
+
+            {showContact && (
+              <div id="contact-details" className="flex flex-col gap-4">
+                {CONTACT_FIELDS.map((field) => (
+                  <div key={field.key} className="flex flex-col gap-1.5">
+                    <Label htmlFor={field.key}>{field.label}</Label>
+                    <Input
+                      id={field.key}
+                      type={field.type ?? 'text'}
+                      inputMode={field.inputMode}
+                      value={contact[field.key]}
+                      onChange={(e) => setContactField(field.key, e.target.value)}
+                      maxLength={field.maxLength}
+                      placeholder={field.placeholder}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <Button type="submit" disabled={!canSubmit} className="w-full rounded-full">

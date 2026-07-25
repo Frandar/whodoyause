@@ -15,6 +15,9 @@ async function authHeader(): Promise<Record<string, string>> {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
+// A neighbor's note attached to their +1 ("add your take"), with attribution.
+export type EndorsementNote = { name: string; note: string };
+
 export type Recommendation = {
   id: string;
   business_name: string;
@@ -25,7 +28,24 @@ export type Recommendation = {
   // True when the signed-in viewer has already +1'd this. Always false for
   // anonymous reads (the backend only computes it when a valid JWT is sent).
   endorsed_by_me: boolean;
+  // Optional contact details the recommender may add (all nullable).
+  phone: string | null;
+  email: string | null;
+  website: string | null;
+  contact_name: string | null;
+  social_link: string | null;
+  // Notes other neighbors left with their +1, oldest first.
+  endorsement_notes: EndorsementNote[];
   created_at?: string;
+};
+
+// The optional contact fields on the add-recommendation form.
+export type ContactInput = {
+  phone?: string;
+  email?: string;
+  website?: string;
+  contact_name?: string;
+  social_link?: string;
 };
 
 export type AddResult =
@@ -77,10 +97,18 @@ export type EndorseResult =
 // (offline, DNS, CORS), and a rejection escaping into component handlers left
 // buttons permanently disabled. Errors come back as values like every other
 // non-ok outcome.
-export async function endorse(id: string): Promise<EndorseResult> {
+export async function endorse(id: string, note?: string): Promise<EndorseResult> {
   try {
-    const headers = await authHeader();
-    const res = await fetch(`${API_BASE}/recommendations/${id}/endorse`, { method: 'POST', headers });
+    // A note upgrades the +1 to a JSON POST ("add your take"); a bare +1 sends no body.
+    const trimmed = note?.trim();
+    const headers = trimmed
+      ? { 'Content-Type': 'application/json', ...(await authHeader()) }
+      : await authHeader();
+    const res = await fetch(`${API_BASE}/recommendations/${id}/endorse`, {
+      method: 'POST',
+      headers,
+      ...(trimmed ? { body: JSON.stringify({ note: trimmed }) } : {}),
+    });
     if (res.ok) return { ok: true, count: (await res.json()).endorsement_count };
     if (res.status === 409) {
       const body = await res.json().catch(() => ({}));
@@ -104,11 +132,13 @@ export async function unendorse(id: string): Promise<{ ok: boolean; count: numbe
   }
 }
 
-export async function addRecommendation(input: {
-  business_name: string;
-  category: string;
-  note?: string;
-}): Promise<AddResult> {
+export async function addRecommendation(
+  input: {
+    business_name: string;
+    category: string;
+    note?: string;
+  } & ContactInput,
+): Promise<AddResult> {
   try {
     const headers = { 'Content-Type': 'application/json', ...(await authHeader()) };
     const res = await fetch(`${API_BASE}/recommendations`, {
