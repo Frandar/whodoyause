@@ -132,6 +132,17 @@ def lambda_handler(event: dict, _context) -> dict:
                 return _response(400, {"error": {"code": "invalid_input", "message": str(exc)}})
             return _response(result["statusCode"], result["body"])
 
+        # DELETE /recommendations/{id}/note  (clear your own +1 note; AUTH)
+        if (
+            method == "DELETE"
+            and len(segments) == 3
+            and segments[0] == "recommendations"
+            and segments[2] == "note"
+        ):
+            claims = verify_token(_auth_header(event))
+            result = recommendations.delete_note(claims, segments[1])
+            return _response(result["statusCode"], result["body"])
+
         # POST/DELETE /recommendations/{id}/endorse
         if len(segments) == 3 and segments[0] == "recommendations" and segments[2] == "endorse":
             if method in ("POST", "DELETE"):

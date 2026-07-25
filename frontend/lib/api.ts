@@ -16,7 +16,8 @@ async function authHeader(): Promise<Record<string, string>> {
 }
 
 // A neighbor's note attached to their +1 ("add your take"), with attribution.
-export type EndorsementNote = { name: string; note: string };
+// is_mine marks the signed-in viewer's own note so the UI can offer edit/delete.
+export type EndorsementNote = { name: string; note: string; is_mine: boolean };
 
 export type Recommendation = {
   id: string;
@@ -122,6 +123,21 @@ export async function endorse(id: string, note?: string): Promise<EndorseResult>
     return { ok: false, kind: 'error' };
   } catch {
     return { ok: false, kind: 'error' };
+  }
+}
+
+// Remove your own +1 note while keeping the +1 itself. Editing a note goes
+// through endorse(id, newNote) (which upserts); this is the "delete" path.
+export async function deleteNote(id: string): Promise<{ ok: boolean }> {
+  try {
+    const headers = await authHeader();
+    const res = await fetch(`${API_BASE}/recommendations/${id}/note`, {
+      method: 'DELETE',
+      headers,
+    });
+    return { ok: res.ok };
+  } catch {
+    return { ok: false };
   }
 }
 

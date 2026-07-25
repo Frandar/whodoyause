@@ -189,22 +189,30 @@ def _to_summary(row) -> dict:
     }
 
 
-# Neighbor +1 notes, aggregated per recommendation. Correlated (uses r.id, no bound
-# param) so it doesn't affect the endorsed_by_me join-param ordering below.
-_ENDORSEMENT_NOTES_SQL = (
-    "(select coalesce(json_agg(json_build_object('name', eu.display_name, 'note', e.note) "
-    "order by e.created_at), '[]') "
-    "from endorsement e join app_user eu on eu.id = e.user_id "
-    "where e.recommendation_id = r.id and e.note is not null and e.note <> '') "
-    "as endorsement_notes"
-)
+def _endorsement_notes_sql(user_id: str | None) -> str:
+    """Neighbor +1 notes, aggregated per recommendation. Each note carries an
+    `is_mine` flag so the viewer can edit/delete their own. Correlated on r.id;
+    when a viewer is known its id is a bound %s INSIDE the SELECT list — so it is
+    the FIRST param, before the endorsed_by_me join param (see _list_select)."""
+    is_mine = "(e.user_id = %s)" if user_id else "false"
+    return (
+        "(select coalesce(json_agg(json_build_object("
+        "'name', eu.display_name, 'note', e.note, 'is_mine', " + is_mine + ") "
+        "order by e.created_at), '[]') "
+        "from endorsement e join app_user eu on eu.id = e.user_id "
+        "where e.recommendation_id = r.id and e.note is not null and e.note <> '') "
+        "as endorsement_notes"
+    )
 
 
 def _list_select(user_id: str | None) -> str:
     """Build the list/search SELECT. When a viewer is known (valid JWT on an
     otherwise-public read), left-join their endorsement so the client can render
-    the +1 state correctly; otherwise endorsed_by_me is constant false. The
-    user_id is always a bound parameter (the join clause carries the first %s)."""
+    the +1 state correctly; otherwise endorsed_by_me is constant false.
+
+    Param order when a viewer is present: the notes subquery's is_mine param
+    comes first (it's earlier in the SELECT text), then the join param. Callers
+    therefore pass the viewer id TWICE — see list_by_category / search."""
     if user_id:
         endorsed = "(me.user_id is not null)"
         join = " left join endorsement me on me.recommendation_id = r.id and me.user_id = %s"
@@ -215,7 +223,7 @@ def _list_select(user_id: str | None) -> str:
         "select r.id, r.business_name, r.category, r.note, r.endorsement_count, "
         "u.display_name, " + endorsed + " as endorsed_by_me, "
         "r.phone, r.email, r.website, r.contact_name, r.social_link, "
-        + _ENDORSEMENT_NOTES_SQL +
+        + _endorsement_notes_sql(user_id) +
         " from recommendation r join app_user u on u.id = r.created_by" + join
     )
 
@@ -246,8 +254,9 @@ def list_by_category(
     The client pages by requesting the next offset until it gets a short page."""
     if category not in CATEGORY_SET:
         raise InvalidInput("unknown category")
-    # Join param (if any) precedes the WHERE param — see _list_select.
-    params = ([user_id] if user_id else []) + [category, limit, offset]
+    # Viewer params (is_mine subquery, then join) precede the WHERE/page params
+    # — see _list_select.
+    params = ([user_id, user_id] if user_id else []) + [category, limit, offset]
     with db.get_connection() as conn:
         rows = conn.execute(
             _list_select(user_id) + " where r.category = %s "
@@ -285,8 +294,9 @@ def search(query: str, category: str | None = None, user_id: str | None = None) 
         raise InvalidInput("unknown category")
 
     sql = _list_select(user_id) + " where r.search_vector @@ websearch_to_tsquery('english', %s)"
-    # Join param (if any) precedes the WHERE params — see _list_select.
-    params: list = ([user_id] if user_id else []) + [query]
+    # Viewer params (is_mine subquery, then join) precede the WHERE params
+    # — see _list_select.
+    params: list = ([user_id, user_id] if user_id else []) + [query]
     if category:
         sql += " and r.category = %s"
         params.append(category)
@@ -389,6 +399,22 @@ def unendorse(claims: dict, recommendation_id: str) -> dict:
                 "endorsement_count": _endorsement_count(conn, recommendation_id),
             },
         }
+
+
+def delete_note(claims: dict, recommendation_id: str) -> dict:
+    """Clear the caller's own +1 note, keeping the +1 itself. Idempotent: a
+    no-op if they have no endorsement or no note. To remove the +1 entirely
+    (which also drops the note), use unendorse."""
+    if not _is_uuid(recommendation_id):
+        return {"statusCode": 404, "body": {"error": {"code": "not_found", "message": "Recommendation not found"}}}
+
+    with db.get_connection() as conn:
+        conn.execute(
+            "update endorsement set note = null "
+            "where recommendation_id = %s and user_id = %s",
+            (recommendation_id, claims["sub"]),
+        )
+    return {"statusCode": 200, "body": {"recommendation_id": recommendation_id}}
 
 
 def suggest_edit(claims: dict, recommendation_id: str, body: dict) -> dict:
