@@ -21,6 +21,11 @@ import { Skeleton } from '@/components/ui/skeleton';
 
 type Params = { q: string; category: string };
 
+// Page size for category browse. The client keeps requesting the next offset
+// until it gets a short page (fewer than PAGE_SIZE), so a busy category doesn't
+// load hundreds of cards at once.
+const PAGE_SIZE = 20;
+
 function readParams(): Params {
   if (typeof window === 'undefined') return { q: '', category: '' };
   const sp = new URLSearchParams(window.location.search);
@@ -112,6 +117,10 @@ function BrowseInner() {
   const [results, setResults] = useState<Recommendation[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
+  // Category browse pages via "Load more"; hasMore is true while the last page
+  // came back full. Search is not paginated (results are already query-narrowed).
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   // Bumping this re-runs the fetch effect with unchanged params — the "Try
   // again" path. (Params are primitives in the dep array, so re-navigating to
   // the same query alone would never refetch.)
@@ -145,20 +154,25 @@ function BrowseInner() {
       setResults([]);
       setLoading(false);
       setError(false);
+      setHasMore(false);
       return;
     }
     const id = ++reqId.current;
     const key = mode === 'search' ? `q:${q}` : `c:${category}`;
     setLoading(true);
     setError(false);
+    setHasMore(false);
 
     const run =
-      mode === 'search' ? searchRecommendations(q) : getRecommendations(category);
+      mode === 'search'
+        ? searchRecommendations(q)
+        : getRecommendations(category, PAGE_SIZE, 0);
 
     run
       .then((data) => {
         if (id !== reqId.current) return; // superseded
         setResults(data);
+        setHasMore(mode === 'browse' && data.length === PAGE_SIZE);
         if (firedKey.current !== key) {
           firedKey.current = key;
           if (mode === 'search') {
@@ -187,6 +201,26 @@ function BrowseInner() {
     (next: string) => navigate(`category=${encodeURIComponent(next)}`),
     [navigate],
   );
+
+  const loadMore = useCallback(() => {
+    if (mode !== 'browse' || loadingMore) return;
+    // Capture the active request id: if the user changes category/search while
+    // this is in flight, the fetch effect bumps reqId and we discard the append.
+    const id = reqId.current;
+    setLoadingMore(true);
+    getRecommendations(category, PAGE_SIZE, results.length)
+      .then((data) => {
+        if (id !== reqId.current) return; // superseded by a new query
+        setResults((prev) => [...prev, ...data]);
+        setHasMore(data.length === PAGE_SIZE);
+      })
+      .catch(() => {
+        /* leave hasMore as-is so the user can retry the same button */
+      })
+      .finally(() => {
+        if (id === reqId.current) setLoadingMore(false);
+      });
+  }, [mode, category, results.length, loadingMore]);
 
   return (
     <>
@@ -260,7 +294,18 @@ function BrowseInner() {
               {results.map((r) => (
                 <RecommendationCard key={r.id} rec={r} signedIn={signedIn} />
               ))}
-              <RecommendMoreCta category={mode === 'browse' ? category : ''} />
+              {hasMore ? (
+                <Button
+                  variant="outline"
+                  className="mt-1 self-center rounded-full"
+                  onClick={loadMore}
+                  disabled={loadingMore}
+                >
+                  {loadingMore ? 'Loading…' : 'Load more'}
+                </Button>
+              ) : (
+                <RecommendMoreCta category={mode === 'browse' ? category : ''} />
+              )}
             </div>
           ) : mode === 'search' ? (
             <EmptyState

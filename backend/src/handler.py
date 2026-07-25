@@ -91,8 +91,11 @@ def lambda_handler(event: dict, _context) -> dict:
             category = params.get("category")
             if not category:
                 return _response(400, {"error": {"code": "invalid_input", "message": "category is required"}})
+            limit, offset = recommendations.parse_pagination(params)
             try:
-                result = recommendations.list_by_category(category, _optional_user_id(event))
+                result = recommendations.list_by_category(
+                    category, _optional_user_id(event), limit, offset
+                )
             except recommendations.InvalidInput as exc:
                 return _response(400, {"error": {"code": "invalid_input", "message": str(exc)}})
             return _response(result["statusCode"], result["body"])

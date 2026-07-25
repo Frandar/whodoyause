@@ -14,6 +14,9 @@ import { endorse, unendorse, type EndorsementNote, type Recommendation } from '@
 import { capture } from '@/lib/analytics';
 
 const ENDORSEMENT_NOTE_MAX = 1000;
+// How many neighbor notes to show before collapsing the rest behind a toggle,
+// so a popular pro's card stays scannable instead of a wall of quotes.
+const NOTE_PREVIEW_COUNT = 2;
 
 // Neighbor-first layout (design reference card): the neighbor's name leads,
 // "recommends" bridges, the business is the Bricolage payoff, and the note
@@ -30,6 +33,7 @@ export function RecommendationCard({
   const [endorsed, setEndorsed] = useState(rec.endorsed_by_me);
   const [pending, setPending] = useState(false);
   const [notes, setNotes] = useState<EndorsementNote[]>(rec.endorsement_notes);
+  const [notesExpanded, setNotesExpanded] = useState(false);
   const [addingNote, setAddingNote] = useState(false);
   const [noteText, setNoteText] = useState('');
   const [savingNote, setSavingNote] = useState(false);
@@ -111,6 +115,7 @@ export function RecommendationCard({
       if (r.ok) {
         capture('endorsement_added', { recommendation_id: rec.id, has_note: true });
         setNotes((prev) => [...prev, { name: 'You', note: text }]);
+        setNotesExpanded(true); // so their just-added take is visible past the preview
         setCount(r.count);
         setEndorsed(true);
         setNoteText('');
@@ -164,8 +169,9 @@ export function RecommendationCard({
           </p>
         )}
 
-        {/* Neighbor +1 notes — the trust workhorse: stacked, attributed quotes. */}
-        {notes.map((n, i) => (
+        {/* Neighbor +1 notes — the trust workhorse: stacked, attributed quotes.
+            Collapsed to a preview so a popular pro's card stays scannable. */}
+        {(notesExpanded ? notes : notes.slice(0, NOTE_PREVIEW_COUNT)).map((n, i) => (
           <figure
             key={`${n.name}-${i}`}
             className="rounded-xl bg-[#f1f6f1] px-3.5 py-3 text-sm leading-[1.5] text-[#33433b]"
@@ -176,6 +182,21 @@ export function RecommendationCard({
             </figcaption>
           </figure>
         ))}
+
+        {notes.length > NOTE_PREVIEW_COUNT && (
+          <button
+            type="button"
+            onClick={() => setNotesExpanded((v) => !v)}
+            aria-expanded={notesExpanded}
+            className="-mt-0.5 cursor-pointer self-start text-[13px] font-semibold text-[#15493f] underline-offset-2 transition-colors hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ffc23d] focus-visible:ring-offset-2 rounded-full"
+          >
+            {notesExpanded
+              ? 'Show fewer notes'
+              : `Show ${notes.length - NOTE_PREVIEW_COUNT} more ${
+                  notes.length - NOTE_PREVIEW_COUNT === 1 ? 'note' : 'notes'
+                }`}
+          </button>
+        )}
 
         {(rec.contact_name || contactLinks.length > 0) && (
           <div className="flex flex-wrap items-center gap-2">

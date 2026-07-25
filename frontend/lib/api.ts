@@ -63,13 +63,17 @@ export async function getCategoryCounts(): Promise<CategoryCount[]> {
   return res.json();
 }
 
-export async function getRecommendations(category: string): Promise<Recommendation[]> {
+export async function getRecommendations(
+  category: string,
+  limit?: number,
+  offset?: number,
+): Promise<Recommendation[]> {
+  const params = new URLSearchParams({ category });
+  if (limit != null) params.set('limit', String(limit));
+  if (offset != null) params.set('offset', String(offset));
   // Public, but send the JWT when present so the backend can fill endorsed_by_me.
   const headers = await authHeader();
-  const res = await fetch(
-    `${API_BASE}/recommendations?category=${encodeURIComponent(category)}`,
-    { headers },
-  );
+  const res = await fetch(`${API_BASE}/recommendations?${params.toString()}`, { headers });
   if (!res.ok) throw new Error('Failed to load recommendations');
   return res.json();
 }
