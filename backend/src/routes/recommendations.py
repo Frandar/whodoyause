@@ -1,6 +1,7 @@
 import uuid
 
 import psycopg
+from psycopg.types.json import Jsonb
 
 from src import db
 from src.categories import CATEGORIES, CATEGORY_SET
@@ -8,6 +9,7 @@ from src.categories import CATEGORIES, CATEGORY_SET
 BUSINESS_NAME_MAX = 200
 NOTE_MAX = 1000
 QUERY_MAX = 100
+SUGGESTION_MESSAGE_MAX = 1000
 DEFAULT_PAGE_SIZE = 20
 MAX_PAGE_SIZE = 50
 PHONE_MAX = 40
@@ -387,3 +389,44 @@ def unendorse(claims: dict, recommendation_id: str) -> dict:
                 "endorsement_count": _endorsement_count(conn, recommendation_id),
             },
         }
+
+
+def suggest_edit(claims: dict, recommendation_id: str, body: dict) -> dict:
+    """Record a neighbor's proposed correction to a recommendation (wrong phone,
+    email, etc.). This does NOT change the live record — it queues a suggestion
+    for the founders to review manually (PRD: manual moderation). Authz is the
+    usual one line: valid JWT → may write.
+
+    `proposed` carries only the contact fields the neighbor supplied (parsed and
+    normalized like create()); `message` is an optional free-text note. At least
+    one of the two is required."""
+    if not _is_uuid(recommendation_id):
+        return {"statusCode": 404, "body": {"error": {"code": "not_found", "message": "Recommendation not found"}}}
+
+    message = _require_str(body, "message") or None
+    if message is not None and len(message) > SUGGESTION_MESSAGE_MAX:
+        raise InvalidInput("message is too long")
+
+    proposed = {k: v for k, v in _contact_fields(body).items() if v is not None}
+    if not proposed and not message:
+        raise InvalidInput("suggest at least one correction or add a message")
+
+    with db.get_connection() as conn:
+        _ensure_app_user(conn, claims)
+        try:
+            row = conn.execute(
+                "insert into edit_suggestion (recommendation_id, suggested_by, message, proposed) "
+                "values (%s, %s, %s, %s) returning id",
+                (recommendation_id, claims["sub"], message, Jsonb(proposed)),
+            ).fetchone()
+        except psycopg.errors.ForeignKeyViolation:
+            return {"statusCode": 404, "body": {"error": {"code": "not_found", "message": "Recommendation not found"}}}
+
+    # Notify the founders' review queue via CloudWatch (mirrors ZERO_RESULTS).
+    # The durable record lives in edit_suggestion; this line surfaces it live.
+    print(
+        f"EDIT_SUGGESTION rec={recommendation_id} by={claims['sub']} "
+        f"proposed={proposed} message={message!r}",
+        flush=True,
+    )
+    return {"statusCode": 201, "body": {"id": str(row[0])}}

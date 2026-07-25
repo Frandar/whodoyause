@@ -112,8 +112,27 @@ def lambda_handler(event: dict, _context) -> dict:
                 return _response(400, {"error": {"code": "invalid_input", "message": str(exc)}})
             return _response(result["statusCode"], result["body"])
 
-        # POST/DELETE /recommendations/{id}/endorse
         segments = path.strip("/").split("/")
+
+        # POST /recommendations/{id}/suggest-edit  (queues a correction; AUTH)
+        if (
+            method == "POST"
+            and len(segments) == 3
+            and segments[0] == "recommendations"
+            and segments[2] == "suggest-edit"
+        ):
+            claims = verify_token(_auth_header(event))
+            try:
+                body = _json_body(event)
+            except (ValueError, json.JSONDecodeError):
+                return _response(400, {"error": {"code": "invalid_json", "message": "Malformed JSON body"}})
+            try:
+                result = recommendations.suggest_edit(claims, segments[1], body)
+            except recommendations.InvalidInput as exc:
+                return _response(400, {"error": {"code": "invalid_input", "message": str(exc)}})
+            return _response(result["statusCode"], result["body"])
+
+        # POST/DELETE /recommendations/{id}/endorse
         if len(segments) == 3 and segments[0] == "recommendations" and segments[2] == "endorse":
             if method in ("POST", "DELETE"):
                 claims = verify_token(_auth_header(event))
