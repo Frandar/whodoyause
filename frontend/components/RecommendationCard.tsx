@@ -243,7 +243,7 @@ export function RecommendationCard({
             <button
               type="button"
               onClick={openNoteBox}
-              className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-[#15493f] transition-colors hover:text-[#0e2a20] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ffc23d] focus-visible:ring-offset-2 rounded-full"
+              className="-ml-2.5 inline-flex cursor-pointer items-center gap-1.5 rounded-full px-2.5 py-1 text-[13px] font-semibold text-[#15493f] transition-colors hover:bg-[#eaf3ee] hover:text-[#0e2a20] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ffc23d] focus-visible:ring-offset-2"
             >
               <MessageSquarePlus className="size-4" aria-hidden />
               Add your take

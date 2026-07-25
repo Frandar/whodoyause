@@ -34,9 +34,12 @@ const CONTACT_FIELDS: {
 }[] = [
   { key: 'phone', label: 'Phone', placeholder: '(555) 123-4567', type: 'tel', inputMode: 'tel', maxLength: 40 },
   { key: 'email', label: 'Email', placeholder: 'name@example.com', type: 'email', inputMode: 'email', maxLength: 200 },
-  { key: 'website', label: 'Website', placeholder: 'joesplumbing.com', type: 'url', inputMode: 'url', maxLength: 300 },
+  // No type="url" on the link fields: native URL validation rejects bare domains
+  // like "joesplumbing.com", but the backend prepends https:// for us. inputMode
+  // still gives mobile users the URL keyboard.
+  { key: 'website', label: 'Website', placeholder: 'joesplumbing.com', inputMode: 'url', maxLength: 300 },
   { key: 'contact_name', label: 'Who to ask for', placeholder: 'e.g. Joe', maxLength: 120 },
-  { key: 'social_link', label: 'Social link', placeholder: 'facebook.com/…', type: 'url', inputMode: 'url', maxLength: 300 },
+  { key: 'social_link', label: 'Social link', placeholder: 'facebook.com/…', inputMode: 'url', maxLength: 300 },
 ];
 
 export default function AddRecommendationForm({
@@ -187,7 +190,7 @@ export default function AddRecommendationForm({
               onClick={() => setShowContact((v) => !v)}
               aria-expanded={showContact}
               aria-controls="contact-details"
-              className="flex items-center gap-1.5 self-start text-sm font-semibold text-[#15493f] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ffc23d] focus-visible:ring-offset-2 rounded-full"
+              className="-ml-2.5 flex cursor-pointer items-center gap-1.5 self-start rounded-full px-2.5 py-1 text-sm font-semibold text-[#15493f] transition-colors hover:bg-[#eaf3ee] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ffc23d] focus-visible:ring-offset-2"
             >
               <ChevronDown
                 className={cn('size-4 transition-transform', showContact && 'rotate-180')}
