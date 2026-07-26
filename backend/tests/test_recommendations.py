@@ -37,16 +37,25 @@ def test_non_string_field():
         rec.create(CLAIMS, {"business_name": 123, "category": "Plumber"})
 
 
-def test_display_name_abbreviates_last_name():
-    # Privacy: first name + last initial, from explicit first/last fields...
-    assert rec._display_name({"user_metadata": {"first_name": "Mike", "last_name": "Rivera"}}) == "Mike R."
-    # ...or split out of a combined "name" field.
-    assert rec._display_name({"user_metadata": {"name": "Mike Rivera"}, "email": "m@e.com"}) == "Mike R."
-    # First name only → no initial to add.
-    assert rec._display_name({"user_metadata": {"first_name": "Mike"}}) == "Mike"
-    # Email is NEVER used as a display name (privacy) — no name means None.
-    assert rec._display_name({"email": "m@e.com"}) is None
-    assert rec._display_name({}) is None
+def test_full_name_from_metadata():
+    # Full name is stored (not abbreviated) — from first/last fields...
+    assert rec._full_name({"user_metadata": {"first_name": "Mike", "last_name": "Rivera"}}) == "Mike Rivera"
+    # ...or a combined "name" field.
+    assert rec._full_name({"user_metadata": {"name": "Mike Rivera"}, "email": "m@e.com"}) == "Mike Rivera"
+    assert rec._full_name({"user_metadata": {"first_name": "Mike"}}) == "Mike"
+    # Email is NEVER used as a name (privacy) — no name means None.
+    assert rec._full_name({"email": "m@e.com"}) is None
+    assert rec._full_name({}) is None
+
+
+def test_abbreviate_shows_first_name_and_last_initial():
+    # Privacy display: full last name is never shown.
+    assert rec._abbreviate("Shania Roberts") == "Shania R."
+    assert rec._abbreviate("Mike Rivera") == "Mike R."
+    assert rec._abbreviate("Mary Jane Watson") == "Mary W."  # last token initial
+    assert rec._abbreviate("Cher") == "Cher"  # single name → as-is
+    assert rec._abbreviate(None) == "Neighbor"  # fallback
+    assert rec._abbreviate("") == "Neighbor"
 
 
 # --- DB paths with a fake connection ---
@@ -90,6 +99,18 @@ def _summary_row(
         phone, email, website, contact_name, social_link,
         [] if endorsement_notes is None else endorsement_notes,
     )
+
+
+def test_to_summary_abbreviates_stored_full_names():
+    # DB holds full names; the read boundary abbreviates recommender + note names.
+    row = _summary_row(
+        "a", "Ace", "Plumber", None, 3, "Shania Roberts", False,
+        endorsement_notes=[{"name": "Mike Rivera", "note": "great", "is_mine": False}],
+    )
+    out = rec._to_summary(row)
+    assert out["created_by_name"] == "Shania R."
+    assert out["endorsement_notes"][0]["name"] == "Mike R."
+    assert out["endorsement_notes"][0]["note"] == "great"  # non-name fields preserved
 
 
 def test_create_success():

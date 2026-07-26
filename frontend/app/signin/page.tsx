@@ -15,17 +15,24 @@ function safeNext(next: string | null): string {
   return next && next.startsWith('/') && !next.startsWith('//') ? next : '/';
 }
 
+type Mode = 'signup' | 'login';
+
 function SignInInner() {
   const router = useRouter();
   const params = useSearchParams();
   const next = safeNext(params.get('next'));
   const { signedIn, loading, sendMagicLink } = useAuth();
 
+  // Default to signup (name capture is the point); ?mode=login targets returning
+  // users. Login asks for email only — no re-entering your name every visit.
+  const [mode, setMode] = useState<Mode>(params.get('mode') === 'login' ? 'login' : 'signup');
   const [email, setEmail] = useState('');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
+
+  const isSignup = mode === 'signup';
 
   // Already signed in → there's nothing to do here; go where they were headed.
   useEffect(() => {
@@ -35,7 +42,7 @@ function SignInInner() {
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSending(true);
-    const result = await sendMagicLink(email, { firstName, lastName });
+    const result = await sendMagicLink(email, isSignup ? { firstName, lastName } : undefined);
     setSending(false);
     if (result.ok) {
       setSent(true);
@@ -43,10 +50,18 @@ function SignInInner() {
       toast.error('Too many sign-in emails', {
         description: 'Wait a minute and try again, or use the link already sent.',
       });
+    } else if (result.notFound) {
+      toast.error('No account found', {
+        description: "We couldn't find an account for that email — create one below.",
+      });
+      setMode('signup');
     } else {
       toast.error("Couldn't send the link", { description: result.message });
     }
   }
+
+  const disabled =
+    sending || !email || (isSignup && (!firstName.trim() || !lastName.trim()));
 
   return (
     <main className="mx-auto flex w-full max-w-md flex-col gap-6 px-4 py-12">
@@ -58,48 +73,58 @@ function SignInInner() {
             </span>
             <p className="font-semibold">Check your email</p>
             <p className="text-sm text-muted-foreground">
-              We sent a sign-in link to {email}. Open it on this device to finish signing in.
+              We sent a magic link to {email}. Open it on this device to finish
+              {isSignup ? ' signing up' : ' logging in'}.
             </p>
           </CardContent>
         </Card>
       ) : (
         <Card>
           <CardHeader>
-            <CardTitle className="text-xl">Sign in</CardTitle>
+            <CardTitle className="text-xl">
+              {isSignup ? 'Create your account' : 'Log in'}
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <form onSubmit={onSubmit} className="flex flex-col gap-4">
               <p className="text-sm text-muted-foreground">
-                Sign in with a magic link to add recommendations and +1 your neighbors&apos;.
-                New here? Your name is what neighbors see on your recommendations — we never
-                show your email.
+                {isSignup ? (
+                  <>
+                    Your name is what neighbors see on your recommendations (shown as
+                    &ldquo;Mike R.&rdquo;) — we never show your email.
+                  </>
+                ) : (
+                  <>Enter your email and we&apos;ll send a magic link — no password.</>
+                )}
               </p>
-              <div className="flex gap-3">
-                <div className="flex flex-1 flex-col gap-1.5">
-                  <Label htmlFor="first-name">First name</Label>
-                  <Input
-                    id="first-name"
-                    type="text"
-                    autoComplete="given-name"
-                    required
-                    value={firstName}
-                    onChange={(e) => setFirstName(e.target.value)}
-                    placeholder="Mike"
-                  />
+              {isSignup && (
+                <div className="flex gap-3">
+                  <div className="flex flex-1 flex-col gap-1.5">
+                    <Label htmlFor="first-name">First name</Label>
+                    <Input
+                      id="first-name"
+                      type="text"
+                      autoComplete="given-name"
+                      required
+                      value={firstName}
+                      onChange={(e) => setFirstName(e.target.value)}
+                      placeholder="Mike"
+                    />
+                  </div>
+                  <div className="flex flex-1 flex-col gap-1.5">
+                    <Label htmlFor="last-name">Last name</Label>
+                    <Input
+                      id="last-name"
+                      type="text"
+                      autoComplete="family-name"
+                      required
+                      value={lastName}
+                      onChange={(e) => setLastName(e.target.value)}
+                      placeholder="Rivera"
+                    />
+                  </div>
                 </div>
-                <div className="flex flex-1 flex-col gap-1.5">
-                  <Label htmlFor="last-name">Last name</Label>
-                  <Input
-                    id="last-name"
-                    type="text"
-                    autoComplete="family-name"
-                    required
-                    value={lastName}
-                    onChange={(e) => setLastName(e.target.value)}
-                    placeholder="Rivera"
-                  />
-                </div>
-              </div>
+              )}
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="email">Email</Label>
                 <Input
@@ -112,14 +137,21 @@ function SignInInner() {
                   placeholder="you@email.com"
                 />
               </div>
-              <Button
-                type="submit"
-                disabled={sending || !email || !firstName.trim() || !lastName.trim()}
-                className="w-full rounded-full"
-              >
-                {sending ? 'Sending…' : 'Send magic link'}
+              <Button type="submit" disabled={disabled} className="w-full rounded-full">
+                {sending ? 'Sending…' : isSignup ? 'Send sign-up link' : 'Send magic link'}
               </Button>
             </form>
+
+            <p className="mt-4 text-center text-sm text-muted-foreground">
+              {isSignup ? 'Already have an account?' : 'New here?'}{' '}
+              <button
+                type="button"
+                onClick={() => setMode(isSignup ? 'login' : 'signup')}
+                className="font-semibold text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+              >
+                {isSignup ? 'Log in' : 'Create an account'}
+              </button>
+            </p>
           </CardContent>
         </Card>
       )}

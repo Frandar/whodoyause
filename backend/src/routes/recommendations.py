@@ -38,23 +38,29 @@ class InvalidInput(Exception):
     """Raised on bad request input → handler maps to 400."""
 
 
-def _display_name(claims: dict) -> str | None:
-    """The neighbor-facing name, derived from the name given at signup (Supabase
-    user_metadata). For privacy we show only the first name plus a last initial
-    ("Mike R.") — never the full last name, and NEVER the email (spam/targeting
-    risk). The full name stays in the identity layer; only this shortened form is
-    stored/shown. Returns None when no name is set so callers apply the fallback."""
+def _full_name(claims: dict) -> str | None:
+    """The full name given at signup (Supabase user_metadata) — first + last, or
+    a combined `name`. We store this in app_user. NEVER the email. Returns None
+    when no name is set so callers can apply the fallback."""
     metadata = claims.get("user_metadata") or {}
     first = (metadata.get("first_name") or "").strip()
     last = (metadata.get("last_name") or "").strip()
-    if not first and not last:
-        # Combined form: split a single "name" field into first + last.
-        parts = (metadata.get("name") or "").strip().split()
-        if parts:
-            first, last = parts[0], (parts[-1] if len(parts) > 1 else "")
-    if first and last:
-        return f"{first} {last[0].upper()}."
-    return first or last or None
+    full = f"{first} {last}".strip()
+    if not full:
+        full = (metadata.get("name") or "").strip()
+    return full or None
+
+
+def _abbreviate(name: str | None) -> str:
+    """Neighbor-facing display form: first name + last initial ("Shania Roberts"
+    -> "Shania R."). For privacy the full last name is never shown. The full name
+    stays in the DB; this is applied only at read time. Falls back to "Neighbor"."""
+    parts = (name or "").split()
+    if not parts:
+        return DISPLAY_NAME_FALLBACK
+    if len(parts) == 1:
+        return parts[0]
+    return f"{parts[0]} {parts[-1][0].upper()}."
 
 
 def _require_str(body: dict, key: str) -> str:
@@ -92,10 +98,11 @@ def _contact_fields(body: dict) -> dict:
 def _ensure_app_user(conn, claims: dict) -> None:
     """Just-in-time provisioning so writes can reference app_user.id.
 
-    Refreshes display_name when the JWT carries a name so a neighbor who signs up
-    (or later sets a name) replaces any earlier placeholder — but never clobbers a
-    real name with the fallback: the `where` skips the update when name is absent."""
-    name = _display_name(claims)  # str | None
+    Stores the FULL name (display abbreviates it). Refreshes when the JWT carries
+    a name so a neighbor who signs up (or later sets one) replaces any earlier
+    placeholder — but never clobbers a real name with the fallback: the `where`
+    skips the update when name is absent."""
+    name = _full_name(claims)  # full name, str | None
     conn.execute(
         "insert into app_user (id, display_name) values (%s, %s) "
         "on conflict (id) do update set display_name = excluded.display_name "
@@ -127,7 +134,7 @@ def create(claims: dict, body: dict) -> dict:
     contact = _contact_fields(body)  # {column: value_or_None}; raises on over-length
 
     user_id = claims["sub"]
-    display_name = _display_name(claims) or DISPLAY_NAME_FALLBACK
+    display_name = _abbreviate(_full_name(claims))  # neighbor-facing "First L."
 
     contact_cols = [column for _, column, _ in CONTACT_FIELDS]
 
@@ -196,13 +203,17 @@ def _to_summary(row) -> dict:
         social_link,
         endorsement_notes,
     ) = row
+    # DB stores full names; abbreviate to "First L." at the display boundary here.
+    notes = [
+        {**n, "name": _abbreviate(n.get("name"))} for n in (endorsement_notes or [])
+    ]
     return {
         "id": str(rec_id),
         "business_name": business_name,
         "category": category,
         "note": note,
         "endorsement_count": count,
-        "created_by_name": created_by_name,
+        "created_by_name": _abbreviate(created_by_name),
         "endorsed_by_me": bool(endorsed_by_me),
         "created_by_me": bool(created_by_me),
         "phone": phone,
@@ -211,7 +222,7 @@ def _to_summary(row) -> dict:
         "contact_name": contact_name,
         "social_link": social_link,
         # psycopg loads the json_agg result as a Python list of {name, note} dicts.
-        "endorsement_notes": endorsement_notes or [],
+        "endorsement_notes": notes,
     }
 
 
