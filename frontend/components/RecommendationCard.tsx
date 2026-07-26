@@ -9,15 +9,37 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Avatar } from '@/components/ui/avatar';
 import { Textarea } from '@/components/ui/textarea';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { SuggestEditDialog } from '@/components/SuggestEditDialog';
 import { cn } from '@/lib/utils';
-import { deleteNote, endorse, unendorse, type EndorsementNote, type Recommendation } from '@/lib/api';
+import {
+  deleteNote,
+  endorse,
+  unendorse,
+  updateRecommendationNote,
+  type EndorsementNote,
+  type Recommendation,
+} from '@/lib/api';
 import { capture } from '@/lib/analytics';
 
 const ENDORSEMENT_NOTE_MAX = 1000;
 // How many neighbor notes to show before collapsing the rest behind a toggle,
 // so a popular pro's card stays scannable instead of a wall of quotes.
 const NOTE_PREVIEW_COUNT = 2;
+
+// Which note the shared editor / confirm dialog is acting on.
+type NoteTarget = 'take' | 'initial';
+
+// Small inline text-button style shared by the Edit / Delete controls.
+const linkBtn =
+  'cursor-pointer rounded-full underline-offset-2 transition-colors hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ffc23d] focus-visible:ring-offset-2';
 
 // Neighbor-first layout (design reference card): the neighbor's name leads,
 // "recommends" bridges, the business is the Bricolage payoff, and the note
@@ -35,9 +57,12 @@ export function RecommendationCard({
   const [pending, setPending] = useState(false);
   const [notes, setNotes] = useState<EndorsementNote[]>(rec.endorsement_notes);
   const [notesExpanded, setNotesExpanded] = useState(false);
-  const [addingNote, setAddingNote] = useState(false);
+  const [initialNote, setInitialNote] = useState(rec.note);
+  const [editing, setEditing] = useState<NoteTarget | null>(null);
   const [noteText, setNoteText] = useState('');
   const [savingNote, setSavingNote] = useState(false);
+  const [confirming, setConfirming] = useState<NoteTarget | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [suggestOpen, setSuggestOpen] = useState(false);
 
   // The viewer's own +1 note, if any — gets edit/delete controls, and its
@@ -53,7 +78,8 @@ export function RecommendationCard({
     setCount(rec.endorsement_count);
     setEndorsed(rec.endorsed_by_me);
     setNotes(rec.endorsement_notes);
-  }, [rec.endorsement_count, rec.endorsed_by_me, rec.endorsement_notes]);
+    setInitialNote(rec.note);
+  }, [rec.endorsement_count, rec.endorsed_by_me, rec.endorsement_notes, rec.note]);
 
   function promptSignIn(message: string) {
     toast.info(message, {
@@ -107,14 +133,93 @@ export function RecommendationCard({
     }
   }
 
-  // Opens the note editor — empty to add, or seeded with the existing note to edit.
-  function openNoteBox(seed = '') {
+  // Open the shared editor for a given note, seeded with its current text.
+  function openEditor(target: NoteTarget, seed = '') {
     if (!signedIn) {
-      promptSignIn('Sign in to add your take');
+      promptSignIn(target === 'initial' ? 'Sign in to edit your note' : 'Sign in to add your take');
       return;
     }
+    setEditing(target);
     setNoteText(seed);
-    setAddingNote(true);
+  }
+
+  function cancelEdit() {
+    setEditing(null);
+    setNoteText('');
+  }
+
+  async function saveNote() {
+    const text = noteText.trim();
+    if (!text) return;
+    setSavingNote(true);
+    try {
+      if (editing === 'initial') {
+        const r = await updateRecommendationNote(rec.id, text);
+        if (r.ok) {
+          setInitialNote(r.note ?? text);
+          cancelEdit();
+          toast.success('Your note was updated');
+        } else if (r.kind === 'unauthenticated') {
+          toast.error('Please sign in again');
+        } else if (r.kind === 'notfound') {
+          toast.error("Couldn't find this recommendation");
+        } else {
+          toast.error("Couldn't save your note");
+        }
+      } else {
+        const editingTake = !!myNote;
+        // A note implicitly +1s (the backend upserts the endorsement), so reflect
+        // both the count and the quote locally without waiting for a refetch.
+        const r = await endorse(rec.id, text);
+        if (r.ok) {
+          capture('endorsement_added', { recommendation_id: rec.id, has_note: true });
+          // One note per user: replace mine if it exists, else add it — mine first
+          // so it's always visible with its controls (not hidden past the preview).
+          setNotes((prev) => [
+            { name: 'You', note: text, is_mine: true },
+            ...prev.filter((n) => !n.is_mine),
+          ]);
+          setCount(r.count);
+          setEndorsed(true);
+          cancelEdit();
+          toast.success(editingTake ? 'Your note was updated' : 'Thanks for your take');
+        } else if (r.kind === 'unauthenticated') {
+          toast.error('Please sign in again');
+        } else {
+          toast.error("Couldn't save your note");
+        }
+      }
+    } finally {
+      setSavingNote(false);
+    }
+  }
+
+  async function confirmDelete() {
+    const target = confirming;
+    if (!target) return;
+    setDeleting(true);
+    try {
+      if (target === 'take') {
+        const r = await deleteNote(rec.id);
+        if (r.ok) {
+          setNotes((prev) => prev.filter((n) => !n.is_mine));
+          toast.success('Your note was removed');
+        } else {
+          toast.error("Couldn't remove your note");
+        }
+      } else {
+        const r = await updateRecommendationNote(rec.id, '');
+        if (r.ok) {
+          setInitialNote(null);
+          toast.success('Your note was removed');
+        } else {
+          toast.error("Couldn't remove your note");
+        }
+      }
+    } finally {
+      setDeleting(false);
+      setConfirming(null);
+    }
   }
 
   function openSuggest() {
@@ -123,48 +228,6 @@ export function RecommendationCard({
       return;
     }
     setSuggestOpen(true);
-  }
-
-  async function saveNote() {
-    const text = noteText.trim();
-    if (!text) return;
-    const editing = !!myNote;
-    setSavingNote(true);
-    try {
-      // A note implicitly +1s (the backend upserts the endorsement), so reflect
-      // both the count and the quote locally without waiting for a refetch.
-      const r = await endorse(rec.id, text);
-      if (r.ok) {
-        capture('endorsement_added', { recommendation_id: rec.id, has_note: true });
-        // One note per user: replace mine if it exists, else add it — mine first
-        // so it's always visible with its controls (not hidden past the preview).
-        setNotes((prev) => [
-          { name: 'You', note: text, is_mine: true },
-          ...prev.filter((n) => !n.is_mine),
-        ]);
-        setCount(r.count);
-        setEndorsed(true);
-        setNoteText('');
-        setAddingNote(false);
-        toast.success(editing ? 'Your note was updated' : 'Thanks for your take');
-      } else if (r.kind === 'unauthenticated') {
-        toast.error('Please sign in again');
-      } else {
-        toast.error("Couldn't save your note");
-      }
-    } finally {
-      setSavingNote(false);
-    }
-  }
-
-  async function removeNote() {
-    const r = await deleteNote(rec.id);
-    if (r.ok) {
-      setNotes((prev) => prev.filter((n) => !n.is_mine));
-      toast.success('Your note was removed');
-    } else {
-      toast.error("Couldn't remove your note");
-    }
   }
 
   const contactLinks = [
@@ -176,6 +239,44 @@ export function RecommendationCard({
 
   const chipClass =
     'inline-flex items-center gap-1.5 rounded-full bg-[#eaf3ee] px-3 py-1 text-[13px] font-semibold text-[#15493f] transition-colors hover:bg-[#dcebe1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ffc23d] focus-visible:ring-offset-1';
+
+  // The shared note editor, placed inline wherever an edit is in progress.
+  function noteEditor(placeholder: string, saveLabel: string) {
+    return (
+      <div className="flex flex-col gap-2">
+        <Textarea
+          value={noteText}
+          onChange={(e) => setNoteText(e.target.value)}
+          maxLength={ENDORSEMENT_NOTE_MAX}
+          placeholder={placeholder}
+          className="min-h-16"
+          aria-label="Note editor"
+          autoFocus
+        />
+        <div className="flex items-center justify-end gap-2">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-8 rounded-full"
+            onClick={cancelEdit}
+            disabled={savingNote}
+          >
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            className="h-8 rounded-full"
+            onClick={saveNote}
+            disabled={savingNote || noteText.trim().length === 0}
+          >
+            {savingNote ? 'Saving…' : saveLabel}
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <Card className="gap-0 py-5">
@@ -199,11 +300,43 @@ export function RecommendationCard({
           {rec.business_name}
         </h3>
 
-        {rec.note && (
-          <p className="rounded-xl bg-[#f1f6f1] px-3.5 py-3 text-sm leading-[1.5] text-[#33433b]">
-            &ldquo;{rec.note}&rdquo;
-          </p>
-        )}
+        {/* The recommendation's own note (written by its creator). Editable and
+            deletable only by the creator (created_by_me). */}
+        {editing === 'initial' ? (
+          noteEditor('Your note about this pro', 'Save note')
+        ) : initialNote ? (
+          <figure className="rounded-xl bg-[#f1f6f1] px-3.5 py-3 text-sm leading-[1.5] text-[#33433b]">
+            <blockquote>&ldquo;{initialNote}&rdquo;</blockquote>
+            {rec.created_by_me && (
+              <figcaption className="mt-1 flex items-center gap-1.5 text-[12.5px] font-semibold text-[#7a887f]">
+                <button
+                  type="button"
+                  onClick={() => openEditor('initial', initialNote)}
+                  className={cn(linkBtn, 'text-[#15493f]')}
+                >
+                  Edit
+                </button>
+                <span aria-hidden>·</span>
+                <button
+                  type="button"
+                  onClick={() => setConfirming('initial')}
+                  className={cn(linkBtn, 'text-[#b00020]')}
+                >
+                  Delete
+                </button>
+              </figcaption>
+            )}
+          </figure>
+        ) : rec.created_by_me ? (
+          <button
+            type="button"
+            onClick={() => openEditor('initial')}
+            className="-ml-2.5 inline-flex cursor-pointer items-center gap-1.5 self-start rounded-full px-2.5 py-1 text-[13px] font-semibold text-[#15493f] transition-colors hover:bg-[#eaf3ee] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ffc23d] focus-visible:ring-offset-2"
+          >
+            <MessageSquarePlus className="size-4" aria-hidden />
+            Add a note
+          </button>
+        ) : null}
 
         {/* Neighbor +1 notes — the trust workhorse: stacked, attributed quotes.
             Collapsed to a preview so a popular pro's card stays scannable. */}
@@ -218,20 +351,20 @@ export function RecommendationCard({
             <blockquote>&ldquo;{n.note}&rdquo;</blockquote>
             <figcaption className="mt-1 flex flex-wrap items-center gap-2 text-[12.5px] font-semibold text-[#7a887f]">
               <span>— {n.is_mine ? 'You' : n.name}</span>
-              {n.is_mine && !addingNote && (
+              {n.is_mine && editing === null && (
                 <span className="flex items-center gap-1.5">
                   <button
                     type="button"
-                    onClick={() => openNoteBox(n.note)}
-                    className="cursor-pointer rounded-full text-[#15493f] underline-offset-2 transition-colors hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ffc23d] focus-visible:ring-offset-2"
+                    onClick={() => openEditor('take', n.note)}
+                    className={cn(linkBtn, 'text-[#15493f]')}
                   >
                     Edit
                   </button>
                   <span aria-hidden>·</span>
                   <button
                     type="button"
-                    onClick={removeNote}
-                    className="cursor-pointer rounded-full text-[#b00020] underline-offset-2 transition-colors hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ffc23d] focus-visible:ring-offset-2"
+                    onClick={() => setConfirming('take')}
+                    className={cn(linkBtn, 'text-[#b00020]')}
                   >
                     Delete
                   </button>
@@ -281,42 +414,8 @@ export function RecommendationCard({
           </div>
         )}
 
-        {addingNote ? (
-          <div className="flex flex-col gap-2">
-            <Textarea
-              value={noteText}
-              onChange={(e) => setNoteText(e.target.value)}
-              maxLength={ENDORSEMENT_NOTE_MAX}
-              placeholder="Why do you use them too?"
-              className="min-h-16"
-              aria-label="Your take on this recommendation"
-              autoFocus
-            />
-            <div className="flex items-center justify-end gap-2">
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="h-8 rounded-full"
-                onClick={() => {
-                  setAddingNote(false);
-                  setNoteText('');
-                }}
-                disabled={savingNote}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                className="h-8 rounded-full"
-                onClick={saveNote}
-                disabled={savingNote || noteText.trim().length === 0}
-              >
-                {savingNote ? 'Saving…' : myNote ? 'Save note' : 'Post take'}
-              </Button>
-            </div>
-          </div>
+        {editing === 'take' ? (
+          noteEditor('Why do you use them too?', myNote ? 'Save note' : 'Post take')
         ) : (
           <div className="flex items-center justify-between gap-3">
             {myNote ? (
@@ -324,7 +423,7 @@ export function RecommendationCard({
             ) : (
               <button
                 type="button"
-                onClick={() => openNoteBox()}
+                onClick={() => openEditor('take')}
                 className="-ml-2.5 inline-flex cursor-pointer items-center gap-1.5 rounded-full px-2.5 py-1 text-[13px] font-semibold text-[#15493f] transition-colors hover:bg-[#eaf3ee] hover:text-[#0e2a20] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ffc23d] focus-visible:ring-offset-2"
               >
                 <MessageSquarePlus className="size-4" aria-hidden />
@@ -361,6 +460,40 @@ export function RecommendationCard({
       </CardContent>
 
       <SuggestEditDialog rec={rec} open={suggestOpen} onOpenChange={setSuggestOpen} />
+
+      <Dialog open={confirming !== null} onOpenChange={(o) => !o && setConfirming(null)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="font-display">Delete this note?</DialogTitle>
+            <DialogDescription>
+              This can&apos;t be undone.{' '}
+              {confirming === 'initial'
+                ? 'Your recommendation stays — only the note is removed.'
+                : 'Your +1 stays — only your note is removed.'}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="ghost"
+              className="rounded-full"
+              onClick={() => setConfirming(null)}
+              disabled={deleting}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              className="rounded-full"
+              onClick={confirmDelete}
+              disabled={deleting}
+            >
+              {deleting ? 'Deleting…' : 'Delete note'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }

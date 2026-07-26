@@ -69,13 +69,14 @@ class _Conn:
 
 def _summary_row(
     rec_id, business, category, note, count, name, endorsed,
-    phone=None, email=None, website=None, contact_name=None,
+    created_by_me=False, phone=None, email=None, website=None, contact_name=None,
     social_link=None, endorsement_notes=None,
 ):
     """Build a list/search SELECT row matching _list_select's column order:
-    base cols, endorsed_by_me, the 5 contact cols, then endorsement_notes json."""
+    base cols, endorsed_by_me, created_by_me, the 5 contact cols, then the
+    endorsement_notes json."""
     return (
-        rec_id, business, category, note, count, name, endorsed,
+        rec_id, business, category, note, count, name, endorsed, created_by_me,
         phone, email, website, contact_name, social_link,
         [] if endorsement_notes is None else endorsement_notes,
     )
@@ -242,8 +243,8 @@ def test_list_with_viewer_joins_their_endorsement():
     with patch.object(rec.db, "get_connection", return_value=_Conn(execute_fn)):
         result = rec.list_by_category("Plumber", viewer)
     assert "left join endorsement me" in captured["sql"]
-    # Viewer appears twice (is_mine subquery, then join), then WHERE + page bounds.
-    assert captured["params"] == (viewer, viewer, "Plumber", 20, 0)
+    # Viewer appears 3× (created_by_me, is_mine subquery, join), then WHERE + page.
+    assert captured["params"] == (viewer, viewer, viewer, "Plumber", 20, 0)
     assert result["body"][0]["endorsed_by_me"] is True
 
 
@@ -358,8 +359,8 @@ def test_search_with_viewer_orders_params_join_query_category():
         return _Cursor(rows=[])
     with patch.object(rec.db, "get_connection", return_value=_Conn(execute_fn)):
         rec.search("plumber", "Plumber", viewer)
-    # viewer (is_mine subquery) → viewer (join) → query → category
-    assert captured["params"] == (viewer, viewer, "plumber", "Plumber")
+    # viewer ×3 (created_by_me, is_mine subquery, join) → query → category
+    assert captured["params"] == (viewer, viewer, viewer, "plumber", "Plumber")
 
 
 def test_search_zero_results_logs_content_gap(capsys):
@@ -587,6 +588,83 @@ def test_list_with_viewer_flags_is_mine_in_notes_sql():
     with patch.object(rec.db, "get_connection", return_value=_Conn(execute_fn)):
         rec.list_by_category("Plumber", viewer)
     assert "'is_mine', (e.user_id = %s)" in captured["sql"]
+
+
+def test_list_with_viewer_flags_created_by_me():
+    viewer = "99999999-9999-9999-9999-999999999999"
+    rows = [_summary_row("a", "Ace", "Plumber", "note", 1, "Mike", False, created_by_me=True)]
+    def execute_fn(sql, params):
+        assert "as created_by_me" in sql
+        return _Cursor(rows=rows)
+    with patch.object(rec.db, "get_connection", return_value=_Conn(execute_fn)):
+        result = rec.list_by_category("Plumber", viewer)
+    assert result["body"][0]["created_by_me"] is True
+
+
+# --- edit / delete the recommendation's own note (creator-scoped) ---
+
+def test_update_note_invalid_uuid_returns_404():
+    assert rec.update_note(CLAIMS, "not-a-uuid", "hi")["statusCode"] == 404
+
+
+def test_update_note_too_long_raises():
+    with pytest.raises(rec.InvalidInput):
+        rec.update_note(CLAIMS, VALID_ID, "x" * (rec.NOTE_MAX + 1))
+
+
+def test_update_note_edits_scoped_to_creator():
+    captured = {}
+    def execute_fn(sql, params):
+        captured["sql"] = sql
+        captured["params"] = params
+        return _Cursor(("new text",))
+    with patch.object(rec.db, "get_connection", return_value=_Conn(execute_fn)):
+        result = rec.update_note(CLAIMS, VALID_ID, "  new text  ")
+    assert result["statusCode"] == 200
+    assert result["body"]["note"] == "new text"
+    assert "created_by = %s" in captured["sql"]  # creator scope
+    assert captured["params"] == ("new text", VALID_ID, CLAIMS["sub"])
+
+
+def test_update_note_empty_clears_to_null():
+    captured = {}
+    def execute_fn(sql, params):
+        captured["params"] = params
+        return _Cursor((None,))
+    with patch.object(rec.db, "get_connection", return_value=_Conn(execute_fn)):
+        result = rec.update_note(CLAIMS, VALID_ID, "   ")
+    assert result["statusCode"] == 200
+    assert result["body"]["note"] is None
+    assert captured["params"][0] is None  # note set to NULL
+
+
+def test_update_note_not_creator_returns_404():
+    def execute_fn(sql, params):
+        return _Cursor(None)  # no row updated → not found / not owner
+    with patch.object(rec.db, "get_connection", return_value=_Conn(execute_fn)):
+        assert rec.update_note(CLAIMS, VALID_ID, "hi")["statusCode"] == 404
+
+
+def test_update_note_route_requires_auth():
+    resp = lambda_handler(
+        _event("PATCH", f"/recommendations/{VALID_ID}", body=json.dumps({"note": "hi"})),
+        None,
+    )
+    assert resp["statusCode"] == 401
+
+
+def test_update_note_route_dispatches_with_auth():
+    def execute_fn(sql, params):
+        return _Cursor(("edited",))
+    with patch("src.handler.verify_token", return_value=CLAIMS), \
+         patch.object(rec.db, "get_connection", return_value=_Conn(execute_fn)):
+        resp = lambda_handler(
+            _event("PATCH", f"/recommendations/{VALID_ID}",
+                   headers={"authorization": "Bearer ok"}, body=json.dumps({"note": "edited"})),
+            None,
+        )
+    assert resp["statusCode"] == 200
+    assert json.loads(resp["body"])["note"] == "edited"
 
 
 # --- suggest an edit ---

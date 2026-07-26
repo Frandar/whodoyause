@@ -114,6 +114,19 @@ def lambda_handler(event: dict, _context) -> dict:
 
         segments = path.strip("/").split("/")
 
+        # PATCH /recommendations/{id}  (edit/clear your own recommendation note; AUTH)
+        if method == "PATCH" and len(segments) == 2 and segments[0] == "recommendations":
+            claims = verify_token(_auth_header(event))
+            try:
+                body = _json_body(event)
+            except (ValueError, json.JSONDecodeError):
+                return _response(400, {"error": {"code": "invalid_json", "message": "Malformed JSON body"}})
+            try:
+                result = recommendations.update_note(claims, segments[1], body.get("note"))
+            except recommendations.InvalidInput as exc:
+                return _response(400, {"error": {"code": "invalid_input", "message": str(exc)}})
+            return _response(result["statusCode"], result["body"])
+
         # POST /recommendations/{id}/suggest-edit  (queues a correction; AUTH)
         if (
             method == "POST"

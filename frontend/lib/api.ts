@@ -29,6 +29,9 @@ export type Recommendation = {
   // True when the signed-in viewer has already +1'd this. Always false for
   // anonymous reads (the backend only computes it when a valid JWT is sent).
   endorsed_by_me: boolean;
+  // True when the signed-in viewer created this recommendation — gates the
+  // edit/delete controls on its own note. False for anonymous reads.
+  created_by_me: boolean;
   // Optional contact details the recommender may add (all nullable).
   phone: string | null;
   email: string | null;
@@ -120,6 +123,39 @@ export async function endorse(id: string, note?: string): Promise<EndorseResult>
       return { ok: false, kind: 'already', count: body?.endorsement_count ?? 0 };
     }
     if (res.status === 401) return { ok: false, kind: 'unauthenticated' };
+    return { ok: false, kind: 'error' };
+  } catch {
+    return { ok: false, kind: 'error' };
+  }
+}
+
+export type UpdateNoteResult =
+  | { ok: true; note: string | null }
+  | { ok: false; kind: 'unauthenticated' | 'notfound' | 'invalid' | 'error'; message?: string };
+
+// Edit or clear the recommendation's OWN note (creator-scoped on the server).
+// Pass '' to clear it. Editing/deleting the initial note both go through here.
+export async function updateRecommendationNote(
+  id: string,
+  note: string,
+): Promise<UpdateNoteResult> {
+  try {
+    const headers = { 'Content-Type': 'application/json', ...(await authHeader()) };
+    const res = await fetch(`${API_BASE}/recommendations/${id}`, {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify({ note }),
+    });
+    if (res.ok) {
+      const body = await res.json().catch(() => ({}));
+      return { ok: true, note: body?.note ?? null };
+    }
+    if (res.status === 401) return { ok: false, kind: 'unauthenticated' };
+    if (res.status === 404) return { ok: false, kind: 'notfound' };
+    if (res.status === 400) {
+      const body = await res.json().catch(() => ({}));
+      return { ok: false, kind: 'invalid', message: body?.error?.message ?? 'Invalid input' };
+    }
     return { ok: false, kind: 'error' };
   } catch {
     return { ok: false, kind: 'error' };
