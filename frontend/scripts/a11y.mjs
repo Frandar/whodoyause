@@ -20,7 +20,7 @@ const require = createRequire(import.meta.url);
 const axePath = require.resolve('axe-core/axe.min.js');
 
 const OUT = new URL('../out/', import.meta.url).pathname;
-const ROUTES = ['/', '/browse', '/recommend', '/signin'];
+const ROUTES = ['/', '/browse', '/recommend', '/signin', '/privacy', '/terms'];
 const PORT = 4178;
 
 const MIME = {

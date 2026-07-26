@@ -5,11 +5,10 @@ import { Logo } from '@/components/Logo';
  * Footer from the design reference: dark green brand column plus link columns.
  *
  * Every link here goes somewhere real. The reference's marketing columns
- * (Pricing, About, Careers, Blog, Privacy/Terms/Cookies) all pointed at "/" —
- * eleven of sixteen links were decoys. On a product whose entire pitch is trust,
- * and which collects email addresses, a Privacy link that goes nowhere is worse
- * than no Privacy link. They are removed until the pages exist rather than
- * faked; FRONTEND.md explicitly allows omitting marketing-only sections.
+ * (Pricing, About, Careers, Blog) all pointed at "/" — decoys on a product whose
+ * entire pitch is trust — so they are omitted until those pages exist, which
+ * FRONTEND.md explicitly allows. Privacy and Terms now have real pages and are
+ * linked below. Do not re-add a link that points at "/".
  */
 const PRODUCT_LINKS = [
   { href: '/browse', label: 'Find a pro' },
@@ -22,6 +21,13 @@ const CATEGORY_LINKS = ['HVAC', 'Plumber', 'Electrician', 'Lawn/Landscaping'] as
 
 const COMPANY_LINKS = [
   { href: 'mailto:hello@whodoyause.com', label: 'Contact' },
+] as const;
+
+// Bottom legal bar. Kept separate from COMPANY_LINKS so these two aren't
+// duplicated in the column above.
+const LEGAL_LINKS = [
+  { href: '/privacy', label: 'Privacy' },
+  { href: '/terms', label: 'Terms' },
 ] as const;
 
 const footerLink =
@@ -86,8 +92,17 @@ export function Footer() {
           <p className="text-[13.5px] text-on-green-subtle">
             © {new Date().getFullYear()} WhoDoYaUse. Made for good neighbors.
           </p>
-          {/* Legal links intentionally absent until the pages exist — see the
-              note at the top of this file. Add them back with real hrefs. */}
+          <div className="flex gap-[22px]">
+            {LEGAL_LINKS.map((link) => (
+              <Link
+                key={link.label}
+                href={link.href}
+                className="inline-flex items-center rounded py-1.5 text-[13.5px] text-on-green-subtle transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring-on-dark"
+              >
+                {link.label}
+              </Link>
+            ))}
+          </div>
         </div>
       </div>
     </footer>
