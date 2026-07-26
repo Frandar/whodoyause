@@ -42,7 +42,13 @@ function SignInInner() {
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSending(true);
-    const result = await sendMagicLink(email, isSignup ? { firstName, lastName } : undefined);
+    // Pass `next` through so the emailed link returns the neighbor to what they
+    // were trying to do, not to the site root.
+    const result = await sendMagicLink(
+      email,
+      isSignup ? { firstName, lastName } : undefined,
+      next,
+    );
     setSending(false);
     if (result.ok) {
       setSent(true);
@@ -64,7 +70,7 @@ function SignInInner() {
     sending || !email || (isSignup && (!firstName.trim() || !lastName.trim()));
 
   return (
-    <main className="mx-auto flex w-full max-w-md flex-col gap-6 px-4 py-12">
+    <div className="mx-auto flex w-full max-w-md flex-col gap-6 px-4 py-12">
       {sent ? (
         <Card>
           <CardContent className="flex flex-col items-center gap-3 p-8 text-center">
@@ -81,8 +87,13 @@ function SignInInner() {
       ) : (
         <Card>
           <CardHeader>
-            <CardTitle className="text-xl">
-              {isSignup ? 'Create your account' : 'Log in'}
+            {/* asChild so the page's visible title is a real <h1>. CardTitle
+                renders a <div> by default, which left /signin with no headings
+                at all (WCAG 1.3.1 / 2.4.6). */}
+            <CardTitle asChild>
+              <h1 className="font-display text-xl font-bold">
+                {isSignup ? 'Create your account' : 'Log in'}
+              </h1>
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -155,7 +166,7 @@ function SignInInner() {
           </CardContent>
         </Card>
       )}
-    </main>
+    </div>
   );
 }
 

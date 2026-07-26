@@ -52,6 +52,40 @@ This is NO LONGER Fresha-inspired — ignore any earlier Fresha references.
 - Frontend holds ONLY the Supabase anon key + the user's JWT.
 - Service role key + DB pooler string live ONLY in Lambda env vars. Never client-side.
 
+## Quality bar (enforced — do not regress)
+
+These came out of a full engineering/design review. `pnpm lint`, `pnpm typecheck`,
+`pnpm a11y` and `uv run pytest` all run in CI on every PR.
+
+**Design tokens are law.** Never write a hex literal in a component. Every colour lives in
+`frontend/app/globals.css` and is used via its Tailwind token (`text-ink-muted`,
+`bg-surface-quote`, `border-border-strong`, …). If a shade you need doesn't exist, add a
+token — don't inline it. The codebase previously carried nine one-off greys and five
+duplicate surfaces, which made a three-value contrast fix a thirty-file edit.
+
+**Accessibility: WCAG 2.2 Level AA.** Three rules cover most of what actually broke here:
+- Every interactive element keeps a **visible focus indicator at ≥3:1**. Use `ring-ring` on
+  light surfaces and `ring-ring-on-dark` on the green fields — gold on cream is 1.5:1 and
+  fails. Never `focus:outline-none` without a replacement.
+- Body text ≥4.5:1 against its actual background.
+- Interactive targets ≥24×24 CSS px (SC 2.5.8).
+Plus: one `<main>` (owned by the root layout — pages must not nest another), a skip link,
+and live regions that are present in the DOM *before* their content changes.
+
+**API error contract.** Backend errors are always `{ "error": { "code", "message" } }` with
+the right status. Frontend: **read** helpers throw (caller shows an error state + retry);
+**write** helpers return result unions the caller branches on. Validate at the network
+boundary — `res.json()` is untrusted.
+
+**Testing floor.** New API routes ship with handler tests (status codes, auth, the failure
+branches). New interactive UI must keep `pnpm a11y` green. The axe job **must**
+force-reveal `[data-reveal]` elements first — axe skips `opacity:0` nodes and will
+otherwise report a false pass.
+
+**Copy tells the truth.** Never describe a capability the MVP doesn't have. Booking,
+messaging and neighborhood-switching are explicit non-scope (PRD §7) and must not appear in
+copy, however good the design reference makes them look.
+
 ## Current milestone
 
 Milestone 2 — core MVP features (add, search, browse, endorse; US1–US5).

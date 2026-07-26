@@ -2,42 +2,47 @@ import Link from 'next/link';
 import { Logo } from '@/components/Logo';
 
 /**
- * Footer from the design reference: dark green (#102e28), brand column plus
- * three link columns, legal bar below. Marketing-only entries (Pricing, About,
- * Careers, Blog, Privacy/Terms/Cookies) are static and point home, mirroring
- * the reference's #top anchors, until real pages exist.
+ * Footer from the design reference: dark green brand column plus link columns.
+ *
+ * Every link here goes somewhere real. The reference's marketing columns
+ * (Pricing, About, Careers, Blog) all pointed at "/" — decoys on a product whose
+ * entire pitch is trust — so they are omitted until those pages exist, which
+ * FRONTEND.md explicitly allows. Privacy and Terms now have real pages and are
+ * linked below. Do not re-add a link that points at "/".
  */
 const PRODUCT_LINKS = [
+  { href: '/browse', label: 'Find a pro' },
+  { href: '/recommend', label: 'Recommend a pro' },
   { href: '/#how', label: 'How it works' },
   { href: '/#categories', label: 'Browse categories' },
-  { href: '/#pros', label: 'For pros' },
-  { href: '/', label: 'Pricing' },
 ] as const;
 
 const CATEGORY_LINKS = ['HVAC', 'Plumber', 'Electrician', 'Lawn/Landscaping'] as const;
 
 const COMPANY_LINKS = [
-  { href: '/', label: 'About' },
-  { href: '/', label: 'Careers' },
   { href: 'mailto:hello@whodoyause.com', label: 'Contact' },
-  { href: '/', label: 'Blog' },
 ] as const;
 
-const LEGAL_LINKS = ['Privacy', 'Terms', 'Cookies'] as const;
+// Bottom legal bar. Kept separate from COMPANY_LINKS so these two aren't
+// duplicated in the column above.
+const LEGAL_LINKS = [
+  { href: '/privacy', label: 'Privacy' },
+  { href: '/terms', label: 'Terms' },
+] as const;
 
 const footerLink =
-  'rounded text-[14.5px] text-[#9fb6ab] transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
+  'inline-flex items-center rounded py-1.5 text-[14.5px] text-on-green-muted transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring-on-dark';
 
 export function Footer() {
   return (
-    <footer className="bg-[#102e28] px-6 pb-8 pt-[clamp(56px,7vw,84px)] text-[#cdddd4]">
+    <footer className="bg-green-deep px-6 pb-8 pt-[clamp(56px,7vw,84px)] text-on-green-body">
       <div className="mx-auto w-full max-w-[1200px]">
         <div className="grid grid-cols-1 gap-x-7 gap-y-10 sm:grid-cols-2 lg:grid-cols-[1.4fr_1fr_1fr_1fr]">
           <div className="min-w-[220px]">
             <div className="mb-4">
               <Logo variant="dark" />
             </div>
-            <p className="max-w-[280px] text-[14.5px] leading-[1.6] text-[#9fb6ab]">
+            <p className="max-w-[280px] text-[14.5px] leading-[1.6] text-on-green-muted">
               Good help, recommended by the people next door. Find trusted local pros without the
               guesswork.
             </p>
@@ -84,17 +89,17 @@ export function Footer() {
           </div>
         </div>
         <div className="mt-12 flex flex-wrap items-center justify-between gap-3.5 border-t border-white/10 pt-6">
-          <p className="text-[13.5px] text-[#7f968b]">
+          <p className="text-[13.5px] text-on-green-subtle">
             © {new Date().getFullYear()} WhoDoYaUse. Made for good neighbors.
           </p>
           <div className="flex gap-[22px]">
-            {LEGAL_LINKS.map((label) => (
+            {LEGAL_LINKS.map((link) => (
               <Link
-                key={label}
-                href="/"
-                className="rounded text-[13.5px] text-[#7f968b] transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                key={link.label}
+                href={link.href}
+                className="inline-flex items-center rounded py-1.5 text-[13.5px] text-on-green-subtle transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring-on-dark"
               >
-                {label}
+                {link.label}
               </Link>
             ))}
           </div>

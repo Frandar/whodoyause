@@ -22,6 +22,14 @@
      not a role system or an authz framework, and is the only safe way to let people
      fix their own content without letting anyone rewrite anyone's. Do NOT generalize
      it into ownership machinery.
+   - _Second deliberate exception — moderation (added pre-launch):_
+     `DELETE /recommendations/{id}` is gated on a founder allow-list read from the
+     `MODERATOR_USER_IDS` env var (`is_moderator()` in `routes/recommendations.py`).
+     Content removal cannot be self-scoped — spam is by definition not authored by
+     the person removing it — and "manual moderation by the founders" (PRD §6) is not
+     a real plan if the only tool is the Supabase SQL editor. It is an allow-list of
+     ids in an env var, empty by default (fail closed), and it must NOT grow into a
+     role system. A third moderator means adding an id, not adding a `role` column.
 
 ## 1. Stack (locked)
 
@@ -170,10 +178,32 @@ POST /recommendations                              AUTH; M2
 POST   /recommendations/{id}/endorse               AUTH; M2
      → 200 { recommendation_id, endorsement_count }
      → 409 already endorsed by this user
+     → 404 no such recommendation
 
 DELETE /recommendations/{id}/endorse               AUTH; M2 (optional un-+1)
      → 200 { recommendation_id, endorsement_count }
+     → 404 no such recommendation
+
+DELETE /recommendations/{id}                       AUTH + moderator allow-list
+     → 200 { deleted: id }                         spam/abuse removal (§0)
+     → 403 caller is not in MODERATOR_USER_IDS
+     → 404 no such recommendation
 ```
+
+**Idempotency contract for the un-do routes.** `DELETE .../endorse` and
+`DELETE .../note` are idempotent with respect to the *endorsement or note* — undoing
+something you never did is a 200, not an error. They are NOT idempotent with respect
+to the *recommendation*: an id that doesn't exist is a 404, matching `endorse`. A
+well-formed UUID must never return a cheerful 200 for a row that isn't there.
+
+**Search is paginated and prefix-matching.** `GET /recommendations/search` accepts
+`limit`/`offset` like the category list (default 20, max 50) — it previously returned
+every match unbounded, on every autocomplete keystroke. The tsquery is built by
+`_prefix_tsquery`, which ANDs the terms and suffixes the last one with `:*`, so the
+word being typed matches as a prefix (`websearch_to_tsquery` alone never matched
+"plumb" against "plumber", so the 2-character autocomplete returned nothing). Terms
+are stripped to word characters and still passed as a **bound parameter** — never
+interpolated into SQL.
 
 The Lambda's internal router maps `(method, path)` to handlers. New routes register the
 same way the M1 `/health` route does — never split into separate functions.
@@ -217,7 +247,9 @@ s3://<bucket> --delete` → `aws cloudfront create-invalidation --paths "/*"`. W
 
 - **Product (the goal):** the PostHog funnel — visit → search → result found → 7-day
   return. Watch `search_zero_results`. This dashboard matters more than any infra metric.
-- **Errors:** Sentry on frontend from day one. Lambda errors via CloudWatch Logs + a metric
+- **Errors:** Sentry on frontend (`lib/errors.ts`, `@sentry/browser`, optional — no-ops
+  without `NEXT_PUBLIC_SENTRY_DSN`; the browser SDK rather than `@sentry/nextjs` because
+  a static export has no server for the Next plugin to instrument). Lambda errors via CloudWatch Logs + a metric
   filter alarming on `ERROR`/unhandled exceptions. Add Sentry-on-Lambda once there are users
   worth retaining.
 - **Infra health:** CloudWatch alarms on Lambda error rate, p95 duration (cold start +

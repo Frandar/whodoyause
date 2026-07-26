@@ -8,6 +8,10 @@ import { CATEGORIES } from '@/lib/categories';
 
 const HERO_CATEGORIES = CATEGORIES.slice(0, 8);
 
+// Single neighborhood at MVP (PRD §6). Named here rather than inline so the one
+// place it appears in copy is obvious when group #2 is onboarded.
+const NEIGHBORHOOD = 'Magnolia';
+
 export function Hero() {
   const router = useRouter();
 
@@ -17,7 +21,7 @@ export function Hero() {
         {/* Eyebrow */}
         <div className="inline-flex items-center gap-2 rounded-full border border-white/16 bg-white/10 px-3.5 py-1.5 text-[13.5px] font-semibold text-white/90">
           <MapPin className="size-3.5 shrink-0" aria-hidden />
-          Magnolia
+          {NEIGHBORHOOD}
         </div>
 
         {/* Headline */}

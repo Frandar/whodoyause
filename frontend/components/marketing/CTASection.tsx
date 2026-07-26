@@ -9,7 +9,7 @@ export function CTASection() {
   return (
     <section
       id="pros"
-      className="relative overflow-hidden bg-primary px-6 py-[clamp(64px,8vw,116px)] text-white"
+      className="scroll-mt-24 relative overflow-hidden bg-primary px-6 py-[clamp(64px,8vw,116px)] text-white"
     >
       <div
         aria-hidden
@@ -19,7 +19,7 @@ export function CTASection() {
         <h2 className="text-balance font-display text-[clamp(34px,5vw,58px)] font-extrabold leading-[1.04] tracking-[-0.025em]">
           Your neighbors already found the good ones.
         </h2>
-        <p className="mx-auto mb-[34px] mt-[18px] max-w-[540px] text-[clamp(17px,1.6vw,20px)] leading-[1.6] text-[#c7dccf]">
+        <p className="mx-auto mb-[34px] mt-[18px] max-w-[540px] text-[clamp(17px,1.6vw,20px)] leading-[1.6] text-on-green-soft">
           Tell us your neighborhood and what you need. We&rsquo;ll show you who&rsquo;s trusted
           right down your street.
         </p>
@@ -32,12 +32,12 @@ export function CTASection() {
           </Link>
           <Link
             href="/recommend"
-            className="rounded-full border-[1.5px] border-white/[0.28] px-[26px] py-4 text-base font-bold text-[#eaf3ee] transition-colors duration-[250ms] hover:border-white/50 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="rounded-full border-[1.5px] border-white/[0.28] px-[26px] py-4 text-base font-bold text-surface-tint transition-colors duration-[250ms] hover:border-white/50 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             Recommend a pro
           </Link>
         </div>
-        <p className="mt-[22px] text-sm text-[#9fbcae]">Free to use · No spam · Real neighbors only</p>
+        <p className="mt-[22px] text-sm text-on-green-faint">Free to use · No spam · Real neighbors only</p>
       </div>
     </section>
   );

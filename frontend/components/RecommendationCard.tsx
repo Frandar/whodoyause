@@ -38,8 +38,10 @@ const NOTE_PREVIEW_COUNT = 2;
 type NoteTarget = 'take' | 'initial';
 
 // Small inline text-button style shared by the Edit / Delete controls.
+// px-1.5/py-1 keeps these above the 24x24 minimum (WCAG 2.2 SC 2.5.8) without
+// changing how they read; -mx-1.5 pulls the padding back out of the layout.
 const linkBtn =
-  'cursor-pointer rounded-full underline-offset-2 transition-colors hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ffc23d] focus-visible:ring-offset-2';
+  '-mx-1.5 inline-flex cursor-pointer items-center rounded-full px-1.5 py-1 underline-offset-2 transition-colors hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2';
 
 // Neighbor-first layout (design reference card): the neighbor's name leads,
 // "recommends" bridges, the business is the Bricolage payoff, and the note
@@ -238,7 +240,7 @@ export function RecommendationCard({
   ].filter(Boolean) as { icon: typeof Phone; label: string; href: string }[];
 
   const chipClass =
-    'inline-flex items-center gap-1.5 rounded-full bg-[#eaf3ee] px-3 py-1 text-[13px] font-semibold text-[#15493f] transition-colors hover:bg-[#dcebe1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ffc23d] focus-visible:ring-offset-1';
+    'inline-flex items-center gap-1.5 rounded-full bg-surface-tint px-3 py-1 text-[13px] font-semibold text-primary transition-colors hover:bg-surface-tint focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1';
 
   // The shared note editor, placed inline wherever an edit is in progress.
   function noteEditor(placeholder: string, saveLabel: string) {
@@ -288,7 +290,7 @@ export function RecommendationCard({
               <span className="text-[15px] font-bold leading-tight">
                 {rec.created_by_name}
               </span>
-              <span className="text-[13px] text-[#7a887f]">recommends</span>
+              <span className="text-[13px] text-ink-muted">recommends</span>
             </span>
           </span>
           <Badge variant="secondary" className="shrink-0">
@@ -305,14 +307,14 @@ export function RecommendationCard({
         {editing === 'initial' ? (
           noteEditor('Your note about this pro', 'Save note')
         ) : initialNote ? (
-          <figure className="rounded-xl bg-[#f1f6f1] px-3.5 py-3 text-sm leading-[1.5] text-[#33433b]">
+          <figure className="rounded-xl bg-surface-quote px-3.5 py-3 text-sm leading-[1.5] text-foreground">
             <blockquote>&ldquo;{initialNote}&rdquo;</blockquote>
             {rec.created_by_me && (
-              <figcaption className="mt-1 flex items-center gap-1.5 text-[12.5px] font-semibold text-[#7a887f]">
+              <figcaption className="mt-1 flex items-center gap-1.5 text-[12.5px] font-semibold text-ink-muted">
                 <button
                   type="button"
                   onClick={() => openEditor('initial', initialNote)}
-                  className={cn(linkBtn, 'text-[#15493f]')}
+                  className={cn(linkBtn, 'text-primary')}
                 >
                   Edit
                 </button>
@@ -320,7 +322,7 @@ export function RecommendationCard({
                 <button
                   type="button"
                   onClick={() => setConfirming('initial')}
-                  className={cn(linkBtn, 'text-[#b00020]')}
+                  className={cn(linkBtn, 'text-destructive')}
                 >
                   Delete
                 </button>
@@ -331,7 +333,7 @@ export function RecommendationCard({
           <button
             type="button"
             onClick={() => openEditor('initial')}
-            className="-ml-2.5 inline-flex cursor-pointer items-center gap-1.5 self-start rounded-full px-2.5 py-1 text-[13px] font-semibold text-[#15493f] transition-colors hover:bg-[#eaf3ee] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ffc23d] focus-visible:ring-offset-2"
+            className="-ml-2.5 inline-flex cursor-pointer items-center gap-1.5 self-start rounded-full px-2.5 py-1 text-[13px] font-semibold text-primary transition-colors hover:bg-surface-tint focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           >
             <MessageSquarePlus className="size-4" aria-hidden />
             Add a note
@@ -344,19 +346,19 @@ export function RecommendationCard({
           <figure
             key={n.is_mine ? 'mine' : `${n.name}-${i}`}
             className={cn(
-              'rounded-xl bg-[#f1f6f1] px-3.5 py-3 text-sm leading-[1.5] text-[#33433b]',
-              n.is_mine && 'ring-1 ring-[#c7dccf]',
+              'rounded-xl bg-surface-quote px-3.5 py-3 text-sm leading-[1.5] text-foreground',
+              n.is_mine && 'ring-1 ring-border-strong',
             )}
           >
             <blockquote>&ldquo;{n.note}&rdquo;</blockquote>
-            <figcaption className="mt-1 flex flex-wrap items-center gap-2 text-[12.5px] font-semibold text-[#7a887f]">
+            <figcaption className="mt-1 flex flex-wrap items-center gap-2 text-[12.5px] font-semibold text-ink-muted">
               <span>— {n.is_mine ? 'You' : n.name}</span>
               {n.is_mine && editing === null && (
                 <span className="flex items-center gap-1.5">
                   <button
                     type="button"
                     onClick={() => openEditor('take', n.note)}
-                    className={cn(linkBtn, 'text-[#15493f]')}
+                    className={cn(linkBtn, 'text-primary')}
                   >
                     Edit
                   </button>
@@ -364,7 +366,7 @@ export function RecommendationCard({
                   <button
                     type="button"
                     onClick={() => setConfirming('take')}
-                    className={cn(linkBtn, 'text-[#b00020]')}
+                    className={cn(linkBtn, 'text-destructive')}
                   >
                     Delete
                   </button>
@@ -379,7 +381,7 @@ export function RecommendationCard({
             type="button"
             onClick={() => setNotesExpanded((v) => !v)}
             aria-expanded={notesExpanded}
-            className="-mt-0.5 cursor-pointer self-start text-[13px] font-semibold text-[#15493f] underline-offset-2 transition-colors hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ffc23d] focus-visible:ring-offset-2 rounded-full"
+            className="-ml-2 -mt-0.5 inline-flex min-h-6 cursor-pointer items-center self-start rounded-full px-2 py-1 text-[13px] font-semibold text-primary underline-offset-2 transition-colors hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           >
             {notesExpanded
               ? 'Show fewer notes'
@@ -392,7 +394,7 @@ export function RecommendationCard({
         {(rec.contact_name || contactLinks.length > 0) && (
           <div className="flex flex-wrap items-center gap-2">
             {rec.contact_name && (
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-[#eaf3ee] px-3 py-1 text-[13px] font-semibold text-[#15493f]">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-surface-tint px-3 py-1 text-[13px] font-semibold text-primary">
                 <User className="size-3.5" aria-hidden />
                 Ask for {rec.contact_name}
               </span>
@@ -424,7 +426,7 @@ export function RecommendationCard({
               <button
                 type="button"
                 onClick={() => openEditor('take')}
-                className="-ml-2.5 inline-flex cursor-pointer items-center gap-1.5 rounded-full px-2.5 py-1 text-[13px] font-semibold text-[#15493f] transition-colors hover:bg-[#eaf3ee] hover:text-[#0e2a20] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ffc23d] focus-visible:ring-offset-2"
+                className="-ml-2.5 inline-flex cursor-pointer items-center gap-1.5 rounded-full px-2.5 py-1 text-[13px] font-semibold text-primary transition-colors hover:bg-surface-tint hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               >
                 <MessageSquarePlus className="size-4" aria-hidden />
                 Add your take
@@ -451,7 +453,7 @@ export function RecommendationCard({
           <button
             type="button"
             onClick={openSuggest}
-            className="inline-flex cursor-pointer items-center gap-1 rounded-full px-1.5 py-0.5 text-[12.5px] font-medium text-[#7a887f] transition-colors hover:text-[#15493f] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ffc23d] focus-visible:ring-offset-2"
+            className="-mr-2 inline-flex min-h-6 cursor-pointer items-center gap-1 rounded-full px-2 py-1 text-[12.5px] font-medium text-ink-muted transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           >
             <PencilLine className="size-3.5" aria-hidden />
             Suggest an edit

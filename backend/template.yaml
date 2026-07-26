@@ -15,6 +15,7 @@ Globals:
         DATABASE_URL: !Ref DatabaseUrl
         SUPABASE_URL: !Ref SupabaseUrl
         CORS_ALLOW_ORIGIN: !Ref CorsAllowOrigin
+        MODERATOR_USER_IDS: !Ref ModeratorUserIds
 
 Parameters:
   DatabaseUrl:
@@ -27,6 +28,13 @@ Parameters:
   CorsAllowOrigin:
     Type: String
     Description: CloudFront distribution URL (e.g. https://dxxxx.cloudfront.net)
+  ModeratorUserIds:
+    Type: String
+    Default: ''
+    Description: >
+      Comma-separated Supabase user ids permitted to DELETE recommendations
+      (spam/abuse moderation). Empty means nobody can moderate — fail closed.
+      This is an allow-list, not a role system; see ARCHITECTURE §0.
 
 Resources:
   ApiFunction:
@@ -55,6 +63,20 @@ Resources:
       # No explicit Policies: SAM attaches AWSLambdaBasicExecutionRole by default,
       # which scopes CloudWatch Logs to this function's own log group. The service
       # needs nothing more (it talks to Postgres over the network, not via IAM).
+
+  # NOTE: log retention is deliberately NOT managed here.
+  # Lambda created /aws/lambda/whodoyause-api implicitly on the first deploy, so
+  # an AWS::Logs::LogGroup resource fails the changeset with
+  # ResourceExistenceCheck — CloudFormation cannot create a group that already
+  # exists, and importing it into the stack is more machinery than a 2-person
+  # MVP should carry. Retention is set out-of-band instead (30 days):
+  #
+  #   aws logs put-retention-policy \
+  #     --log-group-name /aws/lambda/whodoyause-api --retention-in-days 30
+  #
+  # That setting persists and survives redeploys. If this stack is ever recreated
+  # from scratch, re-run the command (or add the resource back — on a fresh
+  # account there is no group to collide with).
 
   ApiErrorAlarm:
     Type: AWS::CloudWatch::Alarm

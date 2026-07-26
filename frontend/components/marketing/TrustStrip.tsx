@@ -34,7 +34,7 @@ export function TrustStrip({
     <section id="trust" className="bg-background px-6 py-[clamp(64px,8vw,104px)]">
       <div className="mx-auto w-full max-w-[1200px]">
         <div data-reveal className="mx-auto mb-12 max-w-[640px] text-center">
-          <p className="mb-3.5 text-[13.5px] font-bold uppercase tracking-[0.08em] text-[#8a9a8f]">
+          <p className="mb-3.5 text-[13.5px] font-bold uppercase tracking-[0.08em] text-ink-eyebrow">
             Word of mouth, organized
           </p>
           <h2 className="text-balance font-display text-[clamp(30px,4vw,44px)] font-extrabold leading-[1.08] tracking-[-0.02em] text-primary">
@@ -53,7 +53,7 @@ export function TrustStrip({
                 <Icon className="size-5" aria-hidden />
               </span>
               <h3 className="mb-2 mt-5 font-display text-xl font-bold text-foreground">{title}</h3>
-              <p className="text-[15.5px] leading-[1.6] text-[#52635a]">{body}</p>
+              <p className="text-[15.5px] leading-[1.6] text-ink-subtle">{body}</p>
             </li>
           ))}
         </ul>
@@ -65,7 +65,7 @@ export function TrustStrip({
               <div className="font-display text-[clamp(30px,3.4vw,42px)] font-extrabold leading-none text-primary">
                 {totalRecommendations.toLocaleString()}
               </div>
-              <div className="mt-1.5 text-sm text-[#6a786f]">
+              <div className="mt-1.5 text-sm text-ink-muted">
                 recommendation{totalRecommendations === 1 ? '' : 's'}
               </div>
             </div>
@@ -74,7 +74,7 @@ export function TrustStrip({
                 <div className="font-display text-[clamp(30px,3.4vw,42px)] font-extrabold leading-none text-primary">
                   {categoriesCovered}
                 </div>
-                <div className="mt-1.5 text-sm text-[#6a786f]">
+                <div className="mt-1.5 text-sm text-ink-muted">
                   categor{categoriesCovered === 1 ? 'y' : 'ies'} covered
                 </div>
               </div>
@@ -83,7 +83,7 @@ export function TrustStrip({
               <div className="font-display text-[clamp(30px,3.4vw,42px)] font-extrabold leading-none text-primary">
                 1
               </div>
-              <div className="mt-1.5 text-sm text-[#6a786f]">neighborhood</div>
+              <div className="mt-1.5 text-sm text-ink-muted">neighborhood</div>
             </div>
           </div>
         )}

@@ -9,14 +9,31 @@ SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
 # with the shared HS256 secret will fail every write with 401 here — enable
 # asymmetric signing keys in the Supabase dashboard before deploying.
 
-# Cached per cold start — fetch JWKS once, not per request.
+# Cached in module scope so the client survives across invocations in a warm
+# container. Two defaults are overridden deliberately:
+#   timeout=3   — PyJWT defaults to 30s, which is longer than the Lambda's own
+#                 10s timeout (template.yaml). A hung JWKS endpoint would kill
+#                 the whole invocation with an opaque timeout instead of a clean
+#                 401/503; 3s fails fast and still leaves room to respond.
+#   lifespan=1h — PyJWT defaults to 300s, so the JWK set was silently re-fetched
+#                 every 5 minutes *inside a request*. Supabase signing keys don't
+#                 rotate on that cadence; an hour keeps the fetch off the hot path.
+#                 Rotation mid-container-life self-heals on the next refresh
+#                 (ARCHITECTURE §10 already accepts this seam).
 _jwks_client: PyJWKClient | None = None
+
+JWKS_TIMEOUT_SECONDS = 3
+JWKS_LIFESPAN_SECONDS = 3600
 
 
 def _get_jwks_client() -> PyJWKClient:
     global _jwks_client
     if _jwks_client is None:
-        _jwks_client = PyJWKClient(f"{SUPABASE_URL}/auth/v1/.well-known/jwks.json")
+        _jwks_client = PyJWKClient(
+            f"{SUPABASE_URL}/auth/v1/.well-known/jwks.json",
+            timeout=JWKS_TIMEOUT_SECONDS,
+            lifespan=JWKS_LIFESPAN_SECONDS,
+        )
     return _jwks_client
 
 

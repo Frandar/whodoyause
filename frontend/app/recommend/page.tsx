@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { CheckCircle2, LogIn } from 'lucide-react';
 import { useAuth } from '@/components/AuthProvider';
@@ -11,8 +11,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import type { Recommendation } from '@/lib/api';
 
 // Prefill the category when arriving from a category browse page
-// (/recommend?category=Plumber). Read lazily on the client — the form is behind
-// the auth gate, so this only runs once window is available.
+// (/recommend?category=Plumber).
 function readCategoryParam(): string {
   if (typeof window === 'undefined') return '';
   return new URLSearchParams(window.location.search).get('category') ?? '';
@@ -21,18 +20,24 @@ function readCategoryParam(): string {
 export default function RecommendPage() {
   const { signedIn, loading, displayName } = useAuth();
   const [added, setAdded] = useState<Recommendation | null>(null);
-  const [initialCategory] = useState(readCategoryParam);
+  // Read in an effect, not a useState initialiser. The initialiser runs during
+  // the hydration render (where `window` exists) but the prerendered HTML was
+  // built with '', so seeding it directly produced a hydration mismatch on the
+  // very deep link the browse page generates. /browse solves the same problem
+  // with a mounted gate; this is the cheaper equivalent for one value.
+  const [initialCategory, setInitialCategory] = useState('');
+  useEffect(() => setInitialCategory(readCategoryParam()), []);
 
   return (
-    <main className="mx-auto flex w-full max-w-md flex-col gap-6 px-4 py-10">
+    <div className="mx-auto flex w-full max-w-md flex-col gap-6 px-4 py-10">
       <div className="flex flex-col gap-2">
-        <p className="text-[13.5px] font-bold uppercase tracking-[0.08em] text-[#8a9a8f]">
+        <p className="text-[13.5px] font-bold uppercase tracking-[0.08em] text-ink-eyebrow">
           Pay it forward
         </p>
         <h1 className="font-display text-[clamp(28px,4vw,36px)] font-extrabold leading-[1.06] tracking-[-0.02em] text-primary">
           Recommend a pro
         </h1>
-        <p className="text-[15.5px] leading-[1.6] text-[#52635a]">
+        <p className="text-[15.5px] leading-[1.6] text-ink-subtle">
           Help a neighbor out — add a local business you trust.
         </p>
       </div>
@@ -82,11 +87,12 @@ export default function RecommendPage() {
             <p className="text-sm text-muted-foreground">Posting as {displayName}</p>
           )}
           <AddRecommendationForm
+            key={initialCategory}
             initialCategory={initialCategory}
             onAdded={(rec) => rec && setAdded(rec)}
           />
         </>
       )}
-    </main>
+    </div>
   );
 }

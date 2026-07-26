@@ -50,7 +50,7 @@ export function CategoryGrid({ items }: { items: CategoryCount[] }) {
               <span className="mt-4 text-[16.5px] font-bold leading-tight text-foreground">
                 {category}
               </span>
-              <span className="mt-[3px] text-[13.5px] text-[#6a786f]">
+              <span className="mt-[3px] text-[13.5px] text-ink-muted">
                 {count > 0 ? `${count} pro${count === 1 ? '' : 's'} nearby` : 'Be the first'}
               </span>
             </Link>

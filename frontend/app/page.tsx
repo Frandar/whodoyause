@@ -42,14 +42,14 @@ export default function Home() {
       <HowItWorks />
 
       {/* Browse-by-category band from the design reference (#categories section). */}
-      <section id="categories" className="bg-[#fffdf9] px-6 py-[clamp(64px,8vw,112px)]">
+      <section id="categories" className="scroll-mt-24 bg-surface-raised px-6 py-[clamp(64px,8vw,112px)]">
         <div className="mx-auto w-full max-w-[1200px]">
           <div
             data-reveal
             className="mb-[46px] flex flex-wrap items-end justify-between gap-5"
           >
             <div className="max-w-[560px]">
-              <p className="mb-3.5 text-[13.5px] font-bold uppercase tracking-[0.08em] text-[#8a9a8f]">
+              <p className="mb-3.5 text-[13.5px] font-bold uppercase tracking-[0.08em] text-ink-eyebrow">
                 Browse by category
               </p>
               <h2 className="text-balance font-display text-[clamp(30px,4vw,46px)] font-extrabold leading-[1.06] tracking-[-0.02em] text-primary">

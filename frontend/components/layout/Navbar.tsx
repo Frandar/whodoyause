@@ -47,7 +47,7 @@ export function Navbar() {
             <Link
               key={link.href}
               href={link.href}
-              className="rounded text-[15px] font-semibold text-[#3c4b44] transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="inline-flex items-center rounded-full px-1 py-1.5 text-[15px] font-semibold text-ink-subtle transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               {link.label}
             </Link>
@@ -59,14 +59,14 @@ export function Navbar() {
             <button
               type="button"
               onClick={() => signOut()}
-              className="hidden rounded text-[15px] font-bold text-primary transition-colors hover:text-primary/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring min-[880px]:inline-flex"
+              className="hidden items-center rounded-full px-1 py-1.5 text-[15px] font-bold text-primary transition-colors hover:text-primary/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring min-[880px]:inline-flex"
             >
               Sign out
             </button>
           ) : (
             <Link
               href="/signin"
-              className="hidden rounded text-[15px] font-bold text-primary transition-colors hover:text-primary/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring min-[880px]:inline-flex"
+              className="hidden items-center rounded-full px-1 py-1.5 text-[15px] font-bold text-primary transition-colors hover:text-primary/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring min-[880px]:inline-flex"
             >
               Log in
             </Link>
@@ -101,7 +101,7 @@ export function Navbar() {
                 key={link.href}
                 href={link.href}
                 onClick={() => setOpen(false)}
-                className="rounded-xl px-3 py-3 text-base font-semibold text-[#22332c] transition-colors hover:bg-[rgb(20_40_30/0.05)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="rounded-xl px-3 py-3 text-base font-semibold text-foreground transition-colors hover:bg-[rgb(20_40_30/0.05)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 {link.label}
               </Link>
@@ -113,7 +113,7 @@ export function Navbar() {
                   setOpen(false);
                   signOut();
                 }}
-                className="rounded-xl px-3 py-3 text-left text-base font-semibold text-[#22332c] transition-colors hover:bg-[rgb(20_40_30/0.05)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="rounded-xl px-3 py-3 text-left text-base font-semibold text-foreground transition-colors hover:bg-[rgb(20_40_30/0.05)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 Sign out{displayName ? ` (${displayName})` : ''}
               </button>
@@ -121,7 +121,7 @@ export function Navbar() {
               <Link
                 href="/signin"
                 onClick={() => setOpen(false)}
-                className="rounded-xl px-3 py-3 text-base font-semibold text-[#22332c] transition-colors hover:bg-[rgb(20_40_30/0.05)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="rounded-xl px-3 py-3 text-base font-semibold text-foreground transition-colors hover:bg-[rgb(20_40_30/0.05)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 Log in
               </Link>

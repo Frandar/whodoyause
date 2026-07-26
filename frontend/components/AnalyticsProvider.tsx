@@ -2,12 +2,14 @@
 
 import { useEffect } from 'react';
 import { capture, initAnalytics } from '@/lib/analytics';
+import { initErrorReporting } from '@/lib/errors';
 
 const FIRST_VISIT_KEY = 'wdyu_first_visit';
 
 export function AnalyticsProvider() {
   useEffect(() => {
     initAnalytics();
+    initErrorReporting();
 
     // return_visit: fire when this device has been here before (US retention signal).
     try {

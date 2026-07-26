@@ -144,9 +144,10 @@ export function SearchAutocomplete({
     setSuggestions(cats);
     if (cats.length) setOpen(true);
 
-    // Business names come from the existing search API.
+    // Business names come from the existing search API. Capped at the same 5 we
+    // display, so a broad prefix no longer pulls a full result set per keystroke.
     let stale = false;
-    searchRecommendations(q)
+    searchRecommendations(q, undefined, 5, 0)
       .then((results) => {
         if (stale) return;
         const seen = new Set<string>();
@@ -163,7 +164,12 @@ export function SearchAutocomplete({
         setSuggestions(all);
         setOpen(all.length > 0);
       })
-      .catch(() => {}); // autocomplete errors are non-critical
+      .catch((err) => {
+        // Non-critical: the category matches above still stand. Logged rather
+        // than swallowed silently so a broken search API is distinguishable
+        // from "no results" — that difference is the US1 content-gap signal.
+        console.warn('Autocomplete lookup failed:', err);
+      });
 
     return () => { stale = true; };
   }, [debouncedQuery]);
@@ -225,11 +231,15 @@ export function SearchAutocomplete({
   }
 
   const activeDescendant = activeIndex >= 0 ? `${uid}-opt-${activeIndex}` : undefined;
+  // The listbox only renders when there is something in it, so aria-expanded
+  // must track that — not just `open` — or it advertises a listbox that isn't
+  // in the DOM (APG combobox pattern).
+  const expanded = open && suggestions.length > 0;
 
   const sharedInputProps = {
     ref: inputRef,
     role: 'combobox' as const,
-    'aria-expanded': open,
+    'aria-expanded': expanded,
     'aria-controls': listboxId,
     'aria-autocomplete': 'list' as const,
     'aria-activedescendant': activeDescendant,
@@ -249,9 +259,14 @@ export function SearchAutocomplete({
   if (variant === 'hero') {
     return (
       <div ref={containerRef} className={cn('relative w-full max-w-[540px]', className)}>
+        {/* The input intentionally has no ring of its own — the whole white pill
+            is the control's visual boundary, so the focus indicator goes on the
+            wrapper via focus-within. Without this the site's primary control had
+            no visible focus state at all (WCAG 2.4.7). The pill sits on the deep
+            green field, so it uses the on-dark gold ring. */}
         <form
           onSubmit={handleSubmit}
-          className="flex items-center gap-2 rounded-full bg-white px-5 py-2 shadow-[0_24px_50px_-24px_rgba(0,0,0,0.6)]"
+          className="flex items-center gap-2 rounded-full bg-white px-5 py-2 shadow-[0_24px_50px_-24px_rgba(0,0,0,0.6)] focus-within:outline-none focus-within:ring-2 focus-within:ring-ring-on-dark focus-within:ring-offset-2 focus-within:ring-offset-primary"
         >
           <Search className="size-4 shrink-0 text-muted-foreground" aria-hidden />
           <input
@@ -270,6 +285,11 @@ export function SearchAutocomplete({
           onSelect={selectSuggestion}
           onHover={setActiveIndex}
         />
+        <span role="status" aria-live="polite" className="sr-only">
+          {expanded
+            ? `${suggestions.length} suggestion${suggestions.length === 1 ? '' : 's'} available`
+            : ''}
+        </span>
       </div>
     );
   }
@@ -300,6 +320,11 @@ export function SearchAutocomplete({
         onSelect={selectSuggestion}
         onHover={setActiveIndex}
       />
+      <span role="status" aria-live="polite" className="sr-only">
+        {expanded
+          ? `${suggestions.length} suggestion${suggestions.length === 1 ? '' : 's'} available`
+          : ''}
+      </span>
     </div>
   );
 }

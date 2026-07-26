@@ -48,6 +48,36 @@ export default function AddRecommendationForm({
   });
   const [showContact, setShowContact] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  // A dedupe hit (409). Persisted in state so the "+1 instead" recovery stays on
+  // screen until the user acts on it — see the duplicate branch in onSubmit.
+  const [duplicate, setDuplicate] = useState<
+    { id: string | null; name: string; category: string } | null
+  >(null);
+  const [endorsing, setEndorsing] = useState(false);
+
+  async function endorseExisting() {
+    if (!duplicate?.id) return;
+    setEndorsing(true);
+    try {
+      const r = await endorse(duplicate.id);
+      if (r.ok) {
+        capture('endorsement_added', { recommendation_id: duplicate.id, has_note: false });
+        toast.success('Thanks for the +1');
+        setDuplicate(null);
+        onAdded?.();
+      } else if (r.kind === 'already') {
+        toast.success("You already +1'd this");
+        setDuplicate(null);
+        onAdded?.();
+      } else if (r.kind === 'unauthenticated') {
+        toast.error('Please sign in again', { description: 'Your session expired.' });
+      } else {
+        toast.error("Couldn't +1");
+      }
+    } finally {
+      setEndorsing(false);
+    }
+  }
 
   const setContactField = (key: ContactKey, value: string) =>
     setContact((prev) => ({ ...prev, [key]: value }));
@@ -92,28 +122,11 @@ export default function AddRecommendationForm({
       setShowContact(false);
       onAdded?.(result.recommendation);
     } else if (result.kind === 'duplicate') {
-      const existingId = result.existingId;
-      toast.info('Already recommended', {
-        description: `${name} is already listed under ${category}.`,
-        action: existingId
-          ? {
-              label: '+1 it instead',
-              onClick: async () => {
-                const r = await endorse(existingId);
-                if (r.ok) {
-                  capture('endorsement_added', { recommendation_id: existingId });
-                  toast.success('Thanks for the +1');
-                  onAdded?.();
-                } else if (r.kind === 'already') {
-                  toast.success("You already +1'd this");
-                  onAdded?.();
-                } else {
-                  toast.error("Couldn't +1");
-                }
-              },
-            }
-          : undefined,
-      });
+      // Held in form state, NOT a toast. This is US2's dedupe recovery — the
+      // most important branch of the add flow — and a Sonner toast auto-dismisses
+      // after ~4s, so the "+1 instead" action disappeared on a timer that the
+      // user cannot extend (WCAG 2.2.1). It now persists until they act on it.
+      setDuplicate({ id: result.existingId, name, category });
     } else if (result.kind === 'unauthenticated') {
       toast.error('Please sign in again', { description: 'Your session expired.' });
     } else {
@@ -130,6 +143,44 @@ export default function AddRecommendationForm({
       </CardHeader>
       <CardContent>
         <form onSubmit={onSubmit} className="flex flex-col gap-4">
+          {duplicate && (
+            <div
+              role="alert"
+              className="flex flex-col gap-3 rounded-[14px] border border-border-strong bg-surface-tint px-4 py-3.5"
+            >
+              <p className="text-[14.5px] font-semibold text-primary">
+                {duplicate.name} is already recommended under {duplicate.category}.
+              </p>
+              <p className="text-sm text-ink-muted">
+                Adding your +1 pushes it higher for your neighbors than a duplicate
+                entry would.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {duplicate.id && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="rounded-full"
+                    onClick={endorseExisting}
+                    disabled={endorsing}
+                  >
+                    {endorsing ? 'Adding your +1…' : '+1 it instead'}
+                  </Button>
+                )}
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  className="rounded-full"
+                  onClick={() => setDuplicate(null)}
+                  disabled={endorsing}
+                >
+                  Edit my entry
+                </Button>
+              </div>
+            </div>
+          )}
+
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="business">Business name</Label>
             <Input
@@ -177,7 +228,7 @@ export default function AddRecommendationForm({
               onClick={() => setShowContact((v) => !v)}
               aria-expanded={showContact}
               aria-controls="contact-details"
-              className="-ml-2.5 flex cursor-pointer items-center gap-1.5 self-start rounded-full px-2.5 py-1 text-sm font-semibold text-[#15493f] transition-colors hover:bg-[#eaf3ee] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ffc23d] focus-visible:ring-offset-2"
+              className="-ml-2.5 flex cursor-pointer items-center gap-1.5 self-start rounded-full px-2.5 py-1 text-sm font-semibold text-primary transition-colors hover:bg-surface-tint focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             >
               <ChevronDown
                 className={cn('size-4 transition-transform', showContact && 'rotate-180')}
@@ -187,8 +238,14 @@ export default function AddRecommendationForm({
               <span className="font-normal text-muted-foreground">(optional)</span>
             </button>
 
-            {showContact && (
-              <div id="contact-details" className="flex flex-col gap-4">
+            {/* Always in the DOM (hidden when collapsed) so the toggle's
+                aria-controls points at a real element rather than a dangling
+                IDREF, and so assistive tech can resolve the relationship. */}
+            <div
+              id="contact-details"
+              hidden={!showContact}
+              className="flex flex-col gap-4"
+            >
                 {CONTACT_FIELDS.map((field) => (
                   <div key={field.key} className="flex flex-col gap-1.5">
                     <Label htmlFor={field.key}>{field.label}</Label>
@@ -208,8 +265,7 @@ export default function AddRecommendationForm({
                     />
                   </div>
                 ))}
-              </div>
-            )}
+            </div>
           </div>
 
           <Button type="submit" disabled={!canSubmit} className="w-full rounded-full">
