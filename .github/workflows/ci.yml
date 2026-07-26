@@ -29,6 +29,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
+        with:
+          # This repo has no root package.json — the pnpm version lives in
+          # frontend/package.json's `packageManager` field. `defaults.run
+          # .working-directory` does not apply to action inputs.
+          package_json_file: frontend/package.json
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -55,6 +60,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
+        with:
+          # This repo has no root package.json — the pnpm version lives in
+          # frontend/package.json's `packageManager` field. `defaults.run
+          # .working-directory` does not apply to action inputs.
+          package_json_file: frontend/package.json
       - uses: actions/setup-node@v4
         with:
           node-version: 22
