@@ -8,7 +8,11 @@ import pytest
 from src.handler import lambda_handler
 from src.routes import recommendations as rec
 
-CLAIMS = {"sub": "11111111-1111-1111-1111-111111111111", "email": "mike@example.com"}
+CLAIMS = {
+    "sub": "11111111-1111-1111-1111-111111111111",
+    "email": "mike@example.com",
+    "user_metadata": {"name": "Mike Rivera"},
+}
 
 
 # --- input validation (no DB) ---
@@ -33,10 +37,16 @@ def test_non_string_field():
         rec.create(CLAIMS, {"business_name": 123, "category": "Plumber"})
 
 
-def test_display_name_precedence():
-    assert rec._display_name({"user_metadata": {"name": "Mike R"}, "email": "m@e.com"}) == "Mike R"
-    assert rec._display_name({"email": "m@e.com"}) == "m@e.com"
-    assert rec._display_name({}) == "Neighbor"
+def test_display_name_abbreviates_last_name():
+    # Privacy: first name + last initial, from explicit first/last fields...
+    assert rec._display_name({"user_metadata": {"first_name": "Mike", "last_name": "Rivera"}}) == "Mike R."
+    # ...or split out of a combined "name" field.
+    assert rec._display_name({"user_metadata": {"name": "Mike Rivera"}, "email": "m@e.com"}) == "Mike R."
+    # First name only → no initial to add.
+    assert rec._display_name({"user_metadata": {"first_name": "Mike"}}) == "Mike"
+    # Email is NEVER used as a display name (privacy) — no name means None.
+    assert rec._display_name({"email": "m@e.com"}) is None
+    assert rec._display_name({}) is None
 
 
 # --- DB paths with a fake connection ---
@@ -101,7 +111,7 @@ def test_create_success():
     assert result["statusCode"] == 201
     assert result["body"]["id"] == rec_id
     assert result["body"]["endorsement_count"] == 0
-    assert result["body"]["created_by_name"] == "mike@example.com"
+    assert result["body"]["created_by_name"] == "Mike R."
     assert result["body"]["endorsement_notes"] == []
 
 

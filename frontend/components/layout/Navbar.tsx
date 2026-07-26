@@ -15,7 +15,7 @@ const NAV_LINKS = [
 ] as const;
 
 export function Navbar() {
-  const { signedIn, email, signOut, loading } = useAuth();
+  const { signedIn, displayName, signOut, loading } = useAuth();
   const [open, setOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
 
@@ -115,7 +115,7 @@ export function Navbar() {
                 }}
                 className="rounded-xl px-3 py-3 text-left text-base font-semibold text-[#22332c] transition-colors hover:bg-[rgb(20_40_30/0.05)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
-                Sign out{email ? ` (${email})` : ''}
+                Sign out{displayName ? ` (${displayName})` : ''}
               </button>
             ) : (
               <Link
