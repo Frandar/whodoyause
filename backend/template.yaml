@@ -48,6 +48,7 @@ Resources:
           AllowMethods:
             - GET
             - POST
+            - PATCH
             - DELETE
           AllowOrigins:
             - !Ref CorsAllowOrigin
