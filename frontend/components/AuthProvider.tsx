@@ -30,7 +30,7 @@ function isNewSignup(userId: string, createdAt: string | undefined): boolean {
 
 export type SendLinkResult =
   | { ok: true }
-  | { ok: false; rateLimited: boolean; message: string };
+  | { ok: false; rateLimited: boolean; notFound: boolean; message: string };
 
 export type SignupName = { firstName: string; lastName: string };
 
@@ -99,23 +99,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   async function sendMagicLink(addr: string, name?: SignupName): Promise<SendLinkResult> {
-    // `data` populates user_metadata and is only applied by Supabase when the
-    // account is first created — so returning users can leave the name blank and
-    // it won't overwrite what they signed up with. We collect first + last name
-    // so recommendations are attributed by name, never by email (privacy).
     const first = name?.firstName.trim() ?? '';
     const last = name?.lastName.trim() ?? '';
-    const data =
-      first || last
-        ? { first_name: first, last_name: last, name: [first, last].filter(Boolean).join(' ') }
-        : undefined;
-    const { error } = await getSupabase().auth.signInWithOtp({
-      email: addr,
-      options: data ? { data } : undefined,
-    });
+    const isSignup = Boolean(first || last);
+    // Signup collects a name and creates the account (data → user_metadata, which
+    // Supabase applies only on creation). Login passes no name and shouldCreateUser
+    // false, so accounts only ever exist with a name attached — a returning user
+    // never re-enters their name, and a typo'd login can't spawn a nameless account.
+    const options = isSignup
+      ? {
+          data: {
+            first_name: first,
+            last_name: last,
+            name: [first, last].filter(Boolean).join(' '),
+          },
+        }
+      : { shouldCreateUser: false };
+    const { error } = await getSupabase().auth.signInWithOtp({ email: addr, options });
     if (!error) return { ok: true };
-    const rateLimited = error.message.toLowerCase().includes('rate limit');
-    return { ok: false, rateLimited, message: error.message };
+    const msg = error.message.toLowerCase();
+    const rateLimited = msg.includes('rate limit');
+    // shouldCreateUser:false against an unknown email → Supabase refuses to sign up.
+    const notFound =
+      !isSignup &&
+      (error.status === 422 ||
+        msg.includes('signup') ||
+        msg.includes('not allowed') ||
+        msg.includes('not found'));
+    return { ok: false, rateLimited, notFound, message: error.message };
   }
 
   async function signOut() {
