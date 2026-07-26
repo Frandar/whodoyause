@@ -64,13 +64,19 @@ Resources:
       # which scopes CloudWatch Logs to this function's own log group. The service
       # needs nothing more (it talks to Postgres over the network, not via IAM).
 
-  # Logs default to never expiring. Zero-result queries and moderation actions
-  # are operational signals with a short useful life, not an archive — cap them.
-  ApiFunctionLogGroup:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      LogGroupName: !Sub '/aws/lambda/${ApiFunction}'
-      RetentionInDays: 30
+  # NOTE: log retention is deliberately NOT managed here.
+  # Lambda created /aws/lambda/whodoyause-api implicitly on the first deploy, so
+  # an AWS::Logs::LogGroup resource fails the changeset with
+  # ResourceExistenceCheck — CloudFormation cannot create a group that already
+  # exists, and importing it into the stack is more machinery than a 2-person
+  # MVP should carry. Retention is set out-of-band instead (30 days):
+  #
+  #   aws logs put-retention-policy \
+  #     --log-group-name /aws/lambda/whodoyause-api --retention-in-days 30
+  #
+  # That setting persists and survives redeploys. If this stack is ever recreated
+  # from scratch, re-run the command (or add the resource back — on a fresh
+  # account there is no group to collide with).
 
   ApiErrorAlarm:
     Type: AWS::CloudWatch::Alarm
