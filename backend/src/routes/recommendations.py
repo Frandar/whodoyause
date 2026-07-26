@@ -148,6 +148,7 @@ def create(claims: dict, body: dict) -> dict:
             "note": nt,
             "endorsement_count": count,
             "created_by_name": display_name,
+            "created_by_me": True,  # the caller just created it
             "created_at": created_at.isoformat(),
             "endorsement_notes": [],
             **contact_values,
@@ -164,6 +165,7 @@ def _to_summary(row) -> dict:
         count,
         created_by_name,
         endorsed_by_me,
+        created_by_me,
         phone,
         email,
         website,
@@ -179,6 +181,7 @@ def _to_summary(row) -> dict:
         "endorsement_count": count,
         "created_by_name": created_by_name,
         "endorsed_by_me": bool(endorsed_by_me),
+        "created_by_me": bool(created_by_me),
         "phone": phone,
         "email": email,
         "website": website,
@@ -215,13 +218,18 @@ def _list_select(user_id: str | None) -> str:
     therefore pass the viewer id TWICE — see list_by_category / search."""
     if user_id:
         endorsed = "(me.user_id is not null)"
+        mine_rec = "(r.created_by = %s)"
         join = " left join endorsement me on me.recommendation_id = r.id and me.user_id = %s"
     else:
         endorsed = "false"
+        mine_rec = "false"
         join = ""
+    # Param order when a viewer is present, in SELECT-then-FROM text order:
+    # created_by_me → is_mine (notes subquery) → join. Callers pass viewer ×3.
     return (
         "select r.id, r.business_name, r.category, r.note, r.endorsement_count, "
         "u.display_name, " + endorsed + " as endorsed_by_me, "
+        + mine_rec + " as created_by_me, "
         "r.phone, r.email, r.website, r.contact_name, r.social_link, "
         + _endorsement_notes_sql(user_id) +
         " from recommendation r join app_user u on u.id = r.created_by" + join
@@ -254,9 +262,9 @@ def list_by_category(
     The client pages by requesting the next offset until it gets a short page."""
     if category not in CATEGORY_SET:
         raise InvalidInput("unknown category")
-    # Viewer params (is_mine subquery, then join) precede the WHERE/page params
-    # — see _list_select.
-    params = ([user_id, user_id] if user_id else []) + [category, limit, offset]
+    # Viewer params (created_by_me, is_mine subquery, then join) precede the
+    # WHERE/page params — see _list_select.
+    params = ([user_id, user_id, user_id] if user_id else []) + [category, limit, offset]
     with db.get_connection() as conn:
         rows = conn.execute(
             _list_select(user_id) + " where r.category = %s "
@@ -294,9 +302,9 @@ def search(query: str, category: str | None = None, user_id: str | None = None) 
         raise InvalidInput("unknown category")
 
     sql = _list_select(user_id) + " where r.search_vector @@ websearch_to_tsquery('english', %s)"
-    # Viewer params (is_mine subquery, then join) precede the WHERE params
-    # — see _list_select.
-    params: list = ([user_id, user_id] if user_id else []) + [query]
+    # Viewer params (created_by_me, is_mine subquery, then join) precede the
+    # WHERE params — see _list_select.
+    params: list = ([user_id, user_id, user_id] if user_id else []) + [query]
     if category:
         sql += " and r.category = %s"
         params.append(category)
@@ -415,6 +423,33 @@ def delete_note(claims: dict, recommendation_id: str) -> dict:
             (recommendation_id, claims["sub"]),
         )
     return {"statusCode": 200, "body": {"recommendation_id": recommendation_id}}
+
+
+def update_note(claims: dict, recommendation_id: str, note: str | None) -> dict:
+    """Edit or clear a recommendation's OWN note — the one written at creation.
+    Scoped to the creator (`created_by = caller`): a deliberate, minimal per-row
+    ownership scope (the only sensible way to let people fix their own note
+    without letting anyone rewrite anyone's). An empty note clears it. A row that
+    doesn't exist or isn't the caller's yields 404. The search_vector trigger
+    reindexes the note on update."""
+    if not _is_uuid(recommendation_id):
+        return {"statusCode": 404, "body": {"error": {"code": "not_found", "message": "Recommendation not found"}}}
+
+    note = (note or "").strip() or None
+    if note is not None and len(note) > NOTE_MAX:
+        raise InvalidInput("note is too long")
+
+    with db.get_connection() as conn:
+        row = conn.execute(
+            "update recommendation set note = %s "
+            "where id = %s and created_by = %s returning note",
+            (note, recommendation_id, claims["sub"]),
+        ).fetchone()
+
+    if row is None:
+        # Either no such recommendation, or the caller didn't create it.
+        return {"statusCode": 404, "body": {"error": {"code": "not_found", "message": "Recommendation not found"}}}
+    return {"statusCode": 200, "body": {"id": recommendation_id, "note": row[0]}}
 
 
 def suggest_edit(claims: dict, recommendation_id: str, body: dict) -> dict:
