@@ -19,7 +19,7 @@ function readCategoryParam(): string {
 }
 
 export default function RecommendPage() {
-  const { signedIn, loading, email } = useAuth();
+  const { signedIn, loading, displayName } = useAuth();
   const [added, setAdded] = useState<Recommendation | null>(null);
   const [initialCategory] = useState(readCategoryParam);
 
@@ -78,7 +78,9 @@ export default function RecommendPage() {
         </Card>
       ) : (
         <>
-          {email && <p className="text-sm text-muted-foreground">Signed in as {email}</p>}
+          {displayName && (
+            <p className="text-sm text-muted-foreground">Posting as {displayName}</p>
+          )}
           <AddRecommendationForm
             initialCategory={initialCategory}
             onAdded={(rec) => rec && setAdded(rec)}

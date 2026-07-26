@@ -22,6 +22,8 @@ function SignInInner() {
   const { signedIn, loading, sendMagicLink } = useAuth();
 
   const [email, setEmail] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
 
@@ -33,7 +35,7 @@ function SignInInner() {
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSending(true);
-    const result = await sendMagicLink(email);
+    const result = await sendMagicLink(email, { firstName, lastName });
     setSending(false);
     if (result.ok) {
       setSent(true);
@@ -69,12 +71,41 @@ function SignInInner() {
             <form onSubmit={onSubmit} className="flex flex-col gap-4">
               <p className="text-sm text-muted-foreground">
                 Sign in with a magic link to add recommendations and +1 your neighbors&apos;.
+                New here? Your name is what neighbors see on your recommendations — we never
+                show your email.
               </p>
+              <div className="flex gap-3">
+                <div className="flex flex-1 flex-col gap-1.5">
+                  <Label htmlFor="first-name">First name</Label>
+                  <Input
+                    id="first-name"
+                    type="text"
+                    autoComplete="given-name"
+                    required
+                    value={firstName}
+                    onChange={(e) => setFirstName(e.target.value)}
+                    placeholder="Mike"
+                  />
+                </div>
+                <div className="flex flex-1 flex-col gap-1.5">
+                  <Label htmlFor="last-name">Last name</Label>
+                  <Input
+                    id="last-name"
+                    type="text"
+                    autoComplete="family-name"
+                    required
+                    value={lastName}
+                    onChange={(e) => setLastName(e.target.value)}
+                    placeholder="Rivera"
+                  />
+                </div>
+              </div>
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="email">Email</Label>
                 <Input
                   id="email"
                   type="email"
+                  autoComplete="email"
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
@@ -83,7 +114,7 @@ function SignInInner() {
               </div>
               <Button
                 type="submit"
-                disabled={sending || !email}
+                disabled={sending || !email || !firstName.trim() || !lastName.trim()}
                 className="w-full rounded-full"
               >
                 {sending ? 'Sending…' : 'Send magic link'}

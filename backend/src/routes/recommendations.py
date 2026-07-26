@@ -19,6 +19,9 @@ CONTACT_NAME_MAX = 120
 SOCIAL_MAX = 300
 ENDORSEMENT_NOTE_MAX = 1000
 
+# Shown when a neighbor hasn't provided a name (never their email).
+DISPLAY_NAME_FALLBACK = "Neighbor"
+
 # Optional contact fields on a recommendation: (body key, column, max length).
 CONTACT_FIELDS = (
     ("phone", "phone", PHONE_MAX),
@@ -35,9 +38,23 @@ class InvalidInput(Exception):
     """Raised on bad request input → handler maps to 400."""
 
 
-def _display_name(claims: dict) -> str:
+def _display_name(claims: dict) -> str | None:
+    """The neighbor-facing name, derived from the name given at signup (Supabase
+    user_metadata). For privacy we show only the first name plus a last initial
+    ("Mike R.") — never the full last name, and NEVER the email (spam/targeting
+    risk). The full name stays in the identity layer; only this shortened form is
+    stored/shown. Returns None when no name is set so callers apply the fallback."""
     metadata = claims.get("user_metadata") or {}
-    return metadata.get("name") or claims.get("email") or "Neighbor"
+    first = (metadata.get("first_name") or "").strip()
+    last = (metadata.get("last_name") or "").strip()
+    if not first and not last:
+        # Combined form: split a single "name" field into first + last.
+        parts = (metadata.get("name") or "").strip().split()
+        if parts:
+            first, last = parts[0], (parts[-1] if len(parts) > 1 else "")
+    if first and last:
+        return f"{first} {last[0].upper()}."
+    return first or last or None
 
 
 def _require_str(body: dict, key: str) -> str:
@@ -73,11 +90,17 @@ def _contact_fields(body: dict) -> dict:
 
 
 def _ensure_app_user(conn, claims: dict) -> None:
-    """Just-in-time provisioning so writes can reference app_user.id."""
+    """Just-in-time provisioning so writes can reference app_user.id.
+
+    Refreshes display_name when the JWT carries a name so a neighbor who signs up
+    (or later sets a name) replaces any earlier placeholder — but never clobbers a
+    real name with the fallback: the `where` skips the update when name is absent."""
+    name = _display_name(claims)  # str | None
     conn.execute(
         "insert into app_user (id, display_name) values (%s, %s) "
-        "on conflict (id) do nothing",
-        (claims["sub"], _display_name(claims)),
+        "on conflict (id) do update set display_name = excluded.display_name "
+        "where %s::text is not null",
+        (claims["sub"], name or DISPLAY_NAME_FALLBACK, name),
     )
 
 
@@ -104,7 +127,7 @@ def create(claims: dict, body: dict) -> dict:
     contact = _contact_fields(body)  # {column: value_or_None}; raises on over-length
 
     user_id = claims["sub"]
-    display_name = _display_name(claims)
+    display_name = _display_name(claims) or DISPLAY_NAME_FALLBACK
 
     contact_cols = [column for _, column, _ in CONTACT_FIELDS]
 

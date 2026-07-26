@@ -32,12 +32,34 @@ export type SendLinkResult =
   | { ok: true }
   | { ok: false; rateLimited: boolean; message: string };
 
+export type SignupName = { firstName: string; lastName: string };
+
+// The neighbor-facing name shown across the app: first name + last initial
+// ("Mike R.") for privacy — mirrors the backend's _display_name so the user sees
+// exactly how they appear to neighbors. Never the email.
+function nameFromUser(user: { user_metadata?: Record<string, unknown> } | undefined): string | null {
+  const meta = user?.user_metadata ?? {};
+  const str = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
+  let first = str(meta.first_name);
+  let last = str(meta.last_name);
+  if (!first && !last) {
+    const parts = str(meta.name).split(/\s+/).filter(Boolean);
+    if (parts.length) {
+      first = parts[0];
+      last = parts.length > 1 ? parts[parts.length - 1] : '';
+    }
+  }
+  if (first && last) return `${first} ${last[0].toUpperCase()}.`;
+  return first || last || null;
+}
+
 type AuthValue = {
   email: string | null;
+  displayName: string | null;
   userId: string | null;
   signedIn: boolean;
   loading: boolean;
-  sendMagicLink: (email: string) => Promise<SendLinkResult>;
+  sendMagicLink: (email: string, name?: SignupName) => Promise<SendLinkResult>;
   signOut: () => Promise<void>;
 };
 
@@ -45,6 +67,7 @@ const AuthContext = createContext<AuthValue | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [email, setEmail] = useState<string | null>(null);
+  const [displayName, setDisplayName] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -53,6 +76,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     supabase.auth.getSession().then(({ data }) => {
       const user = data.session?.user;
       setEmail(user?.email ?? null);
+      setDisplayName(nameFromUser(user));
       setUserId(user?.id ?? null);
       if (user) identify(user.id, { email: user.email });
       setLoading(false);
@@ -60,6 +84,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
       const user = session?.user;
       setEmail(user?.email ?? null);
+      setDisplayName(nameFromUser(user));
       setUserId(user?.id ?? null);
       if (user) {
         identify(user.id, { email: user.email });
@@ -73,8 +98,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => listener.subscription.unsubscribe();
   }, []);
 
-  async function sendMagicLink(addr: string): Promise<SendLinkResult> {
-    const { error } = await getSupabase().auth.signInWithOtp({ email: addr });
+  async function sendMagicLink(addr: string, name?: SignupName): Promise<SendLinkResult> {
+    // `data` populates user_metadata and is only applied by Supabase when the
+    // account is first created — so returning users can leave the name blank and
+    // it won't overwrite what they signed up with. We collect first + last name
+    // so recommendations are attributed by name, never by email (privacy).
+    const first = name?.firstName.trim() ?? '';
+    const last = name?.lastName.trim() ?? '';
+    const data =
+      first || last
+        ? { first_name: first, last_name: last, name: [first, last].filter(Boolean).join(' ') }
+        : undefined;
+    const { error } = await getSupabase().auth.signInWithOtp({
+      email: addr,
+      options: data ? { data } : undefined,
+    });
     if (!error) return { ok: true };
     const rateLimited = error.message.toLowerCase().includes('rate limit');
     return { ok: false, rateLimited, message: error.message };
@@ -88,6 +126,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     <AuthContext.Provider
       value={{
         email,
+        displayName,
         userId,
         signedIn: !!userId,
         loading,
