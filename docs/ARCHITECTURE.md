@@ -15,6 +15,13 @@
 2. **VELOCITY — one-line authorization.** Authorization is "valid JWT → may write."
    No roles, no per-row ownership checks. One +1 per user is enforced by a DB unique
    constraint, not application logic. Do not build an authorization framework.
+   - _Deliberate, approved exception (post-launch):_ editing/deleting a resource you
+     authored is scoped to the author via a single `where created_by = caller` (or
+     `user_id = caller`) clause on the write — e.g. editing your own recommendation
+     note (`PATCH /recommendations/{id}`) or your own +1 note. This is self-scoping,
+     not a role system or an authz framework, and is the only safe way to let people
+     fix their own content without letting anyone rewrite anyone's. Do NOT generalize
+     it into ownership machinery.
 
 ## 1. Stack (locked)
 
