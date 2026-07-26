@@ -158,16 +158,14 @@ function BrowseInner() {
       return;
     }
     const id = ++reqId.current;
-    const key = mode === 'search' ? `q:${q}|c:${category}` : `c:${category}`;
+    const key = mode === 'search' ? `q:${q}` : `c:${category}`;
     setLoading(true);
     setError(false);
     setHasMore(false);
 
     const run =
       mode === 'search'
-        ? // Pass the category through: the API has always supported filtering a
-          // search by category, the UI just never sent it.
-          searchRecommendations(q, category || undefined, PAGE_SIZE, 0)
+        ? searchRecommendations(q, undefined, PAGE_SIZE, 0)
         : getRecommendations(category, PAGE_SIZE, 0);
 
     run
@@ -178,9 +176,8 @@ function BrowseInner() {
         if (firedKey.current !== key) {
           firedKey.current = key;
           if (mode === 'search') {
-            capture('search', { query: q, category: category || null, results_count: data.length });
-            if (data.length === 0)
-              capture('search_zero_results', { query: q, category: category || null });
+            capture('search', { query: q, category: null, results_count: data.length });
+            if (data.length === 0) capture('search_zero_results', { query: q, category: null });
           } else {
             capture('category_browsed', { category });
           }
@@ -209,23 +206,23 @@ function BrowseInner() {
             : `No matches for “${q}”`
           : `${results.length} recommendation${results.length === 1 ? '' : 's'} in ${category}`;
 
-  // Both params live in one URL, so a query and a category compose instead of
-  // clobbering each other: searching "leak" then tapping "Plumber" now filters
-  // the search rather than throwing it away. Clicking the active chip clears it.
-  const buildSearch = useCallback((nextQ: string, nextCategory: string) => {
-    const sp = new URLSearchParams();
-    if (nextQ) sp.set('q', nextQ);
-    if (nextCategory) sp.set('category', nextCategory);
-    return sp.toString();
-  }, []);
-
+  // Search and category-browse are mutually exclusive MODES, not composable
+  // filters. Tapping a category means "show me everything in this category", so
+  // it clears the query; running a search means "show me matches anywhere", so
+  // it clears the category. Exactly one of ?q= / ?category= is ever in the URL,
+  // which keeps the chips' selected state and the results honest about each
+  // other. (The API does support q+category together — if a "filter within
+  // these results" affordance is ever wanted, that's a separate control, not
+  // the category chips.)
   const runSearch = useCallback(
-    (next: string) => navigate(buildSearch(next, category)),
-    [navigate, buildSearch, category],
+    (next: string) => navigate(next ? `q=${encodeURIComponent(next)}` : ''),
+    [navigate],
   );
   const browseCategory = useCallback(
-    (next: string) => navigate(buildSearch(q, next === category ? '' : next)),
-    [navigate, buildSearch, q, category],
+    // Tapping the already-active chip deselects it and returns to the picker.
+    (next: string) =>
+      navigate(next === category && !q ? '' : `category=${encodeURIComponent(next)}`),
+    [navigate, category, q],
   );
 
   const loadMore = useCallback(() => {
@@ -237,7 +234,7 @@ function BrowseInner() {
     // Search paginates now too — the API is bounded, so a broad query no longer
     // dumps every match into one response.
     (mode === 'search'
-      ? searchRecommendations(q, category || undefined, PAGE_SIZE, results.length)
+      ? searchRecommendations(q, undefined, PAGE_SIZE, results.length)
       : getRecommendations(category, PAGE_SIZE, results.length)
     )
       .then((data) => {
