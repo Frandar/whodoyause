@@ -43,7 +43,7 @@ function BrowseHeroBand({ children }: { children: React.ReactNode }) {
         className="pointer-events-none absolute -right-[120px] -top-[120px] size-[460px] rounded-full bg-[radial-gradient(circle_at_center,rgb(255_255_255/0.08),transparent_65%)]"
       />
       <div className="relative mx-auto flex w-full max-w-2xl flex-col items-center gap-5 px-4 py-10 text-center sm:py-14">
-        <p className="inline-flex items-center gap-2 rounded-full border border-white/[0.16] bg-white/[0.12] py-[7px] pl-[11px] pr-3.5 text-[13.5px] font-semibold text-[#eaf3ee]">
+        <p className="inline-flex items-center gap-2 rounded-full border border-white/[0.16] bg-white/[0.12] py-[7px] pl-[11px] pr-3.5 text-[13.5px] font-semibold text-surface-tint">
           <span className="text-sm text-amber" aria-hidden>
             ★
           </span>
@@ -67,8 +67,8 @@ function RecommendMoreCta({ category }: { category: string }) {
     ? `/recommend?category=${encodeURIComponent(category)}`
     : '/recommend';
   return (
-    <div className="mt-1 flex flex-col items-center gap-3 rounded-[14px] border border-dashed border-[#c7dccf] bg-[#f6faf5] px-5 py-6 text-center">
-      <p className="text-[14.5px] font-semibold text-[#15493f]">
+    <div className="mt-1 flex flex-col items-center gap-3 rounded-[14px] border border-dashed border-border-strong bg-surface-quote px-5 py-6 text-center">
+      <p className="text-[14.5px] font-semibold text-primary">
         {category ? `Know another great ${category}?` : 'Know a pro worth recommending?'}
       </p>
       <Button asChild className="rounded-full">
@@ -117,8 +117,8 @@ function BrowseInner() {
   const [results, setResults] = useState<Recommendation[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
-  // Category browse pages via "Load more"; hasMore is true while the last page
-  // came back full. Search is not paginated (results are already query-narrowed).
+  // Both search and category browse page via "Load more"; hasMore is true while
+  // the last page came back full.
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   // Bumping this re-runs the fetch effect with unchanged params — the "Try
@@ -158,26 +158,29 @@ function BrowseInner() {
       return;
     }
     const id = ++reqId.current;
-    const key = mode === 'search' ? `q:${q}` : `c:${category}`;
+    const key = mode === 'search' ? `q:${q}|c:${category}` : `c:${category}`;
     setLoading(true);
     setError(false);
     setHasMore(false);
 
     const run =
       mode === 'search'
-        ? searchRecommendations(q)
+        ? // Pass the category through: the API has always supported filtering a
+          // search by category, the UI just never sent it.
+          searchRecommendations(q, category || undefined, PAGE_SIZE, 0)
         : getRecommendations(category, PAGE_SIZE, 0);
 
     run
       .then((data) => {
         if (id !== reqId.current) return; // superseded
         setResults(data);
-        setHasMore(mode === 'browse' && data.length === PAGE_SIZE);
+        setHasMore(data.length === PAGE_SIZE);
         if (firedKey.current !== key) {
           firedKey.current = key;
           if (mode === 'search') {
-            capture('search', { query: q, category: null, results_count: data.length });
-            if (data.length === 0) capture('search_zero_results', { query: q, category: null });
+            capture('search', { query: q, category: category || null, results_count: data.length });
+            if (data.length === 0)
+              capture('search_zero_results', { query: q, category: category || null });
           } else {
             capture('category_browsed', { category });
           }
@@ -193,22 +196,50 @@ function BrowseInner() {
       });
   }, [mode, q, category, retryTick]);
 
+  // Single source of truth for what the status region announces (WCAG 4.1.3).
+  const statusMessage = !mode
+    ? ''
+    : loading
+      ? 'Loading recommendations…'
+      : error
+        ? "Couldn't load recommendations. Try again."
+        : mode === 'search'
+          ? results.length > 0
+            ? `${results.length} result${results.length === 1 ? '' : 's'} for “${q}”`
+            : `No matches for “${q}”`
+          : `${results.length} recommendation${results.length === 1 ? '' : 's'} in ${category}`;
+
+  // Both params live in one URL, so a query and a category compose instead of
+  // clobbering each other: searching "leak" then tapping "Plumber" now filters
+  // the search rather than throwing it away. Clicking the active chip clears it.
+  const buildSearch = useCallback((nextQ: string, nextCategory: string) => {
+    const sp = new URLSearchParams();
+    if (nextQ) sp.set('q', nextQ);
+    if (nextCategory) sp.set('category', nextCategory);
+    return sp.toString();
+  }, []);
+
   const runSearch = useCallback(
-    (next: string) => navigate(`q=${encodeURIComponent(next)}`),
-    [navigate],
+    (next: string) => navigate(buildSearch(next, category)),
+    [navigate, buildSearch, category],
   );
   const browseCategory = useCallback(
-    (next: string) => navigate(`category=${encodeURIComponent(next)}`),
-    [navigate],
+    (next: string) => navigate(buildSearch(q, next === category ? '' : next)),
+    [navigate, buildSearch, q, category],
   );
 
   const loadMore = useCallback(() => {
-    if (mode !== 'browse' || loadingMore) return;
+    if (!mode || loadingMore) return;
     // Capture the active request id: if the user changes category/search while
     // this is in flight, the fetch effect bumps reqId and we discard the append.
     const id = reqId.current;
     setLoadingMore(true);
-    getRecommendations(category, PAGE_SIZE, results.length)
+    // Search paginates now too — the API is bounded, so a broad query no longer
+    // dumps every match into one response.
+    (mode === 'search'
+      ? searchRecommendations(q, category || undefined, PAGE_SIZE, results.length)
+      : getRecommendations(category, PAGE_SIZE, results.length)
+    )
       .then((data) => {
         if (id !== reqId.current) return; // superseded by a new query
         setResults((prev) => [...prev, ...data]);
@@ -220,7 +251,7 @@ function BrowseInner() {
       .finally(() => {
         if (id === reqId.current) setLoadingMore(false);
       });
-  }, [mode, category, results.length, loadingMore]);
+  }, [mode, q, category, results.length, loadingMore]);
 
   return (
     <>
@@ -233,7 +264,7 @@ function BrowseInner() {
         />
       </BrowseHeroBand>
 
-      <main className="mx-auto flex w-full max-w-2xl flex-col gap-4 px-4 py-8">
+      <div className="mx-auto flex w-full max-w-2xl flex-col gap-4 px-4 py-8">
         <section className="flex flex-col gap-4">
           {categoriesError ? (
             <p className="text-sm text-muted-foreground">
@@ -255,16 +286,28 @@ function BrowseInner() {
           ) : (
             <CategoryChips
               items={categories}
-              selected={mode === 'browse' ? category : null}
+              selected={category || null}
               onSelect={browseCategory}
             />
           )}
 
-          {mode === 'search' && !loading && !error && (
-            <p className="text-sm text-muted-foreground" aria-live="polite">
-              {results.length > 0 ? `Results for “${q}”` : `No matches for “${q}”`}
-            </p>
-          )}
+          {/* Status region. Rendered UNCONDITIONALLY so screen readers announce
+              changes: a live region inserted into the DOM together with its text
+              is generally not announced (WCAG 4.1.3). It covers all four states
+              — loading, results, zero results, error — for search AND browse.
+              Visually it only shows the search summary; the rest is SR-only so
+              the layout is unchanged. */}
+          <p
+            role="status"
+            aria-live="polite"
+            className={
+              mode === 'search' && !loading && !error
+                ? 'text-sm text-muted-foreground'
+                : 'sr-only'
+            }
+          >
+            {statusMessage}
+          </p>
 
           {!mode ? (
             <EmptyState
@@ -304,7 +347,7 @@ function BrowseInner() {
                   {loadingMore ? 'Loading…' : 'Load more'}
                 </Button>
               ) : (
-                <RecommendMoreCta category={mode === 'browse' ? category : ''} />
+                <RecommendMoreCta category={category} />
               )}
             </div>
           ) : mode === 'search' ? (
@@ -331,7 +374,7 @@ function BrowseInner() {
             />
           )}
         </section>
-      </main>
+      </div>
     </>
   );
 }
@@ -354,7 +397,7 @@ function BrowseFallback() {
       <BrowseHeroBand>
         <Skeleton className="h-[52px] w-full max-w-[540px] rounded-full bg-white/20" />
       </BrowseHeroBand>
-      <main className="mx-auto flex w-full max-w-2xl flex-col gap-4 px-4 py-8">
+      <div className="mx-auto flex w-full max-w-2xl flex-col gap-4 px-4 py-8">
         <div className="flex flex-wrap gap-2">
           {Array.from({ length: 6 }).map((_, i) => (
             <Skeleton key={i} className="h-8 w-24 rounded-full" />
@@ -365,7 +408,7 @@ function BrowseFallback() {
             <Skeleton key={i} className="h-32 w-full rounded-lg" />
           ))}
         </div>
-      </main>
+      </div>
     </>
   );
 }

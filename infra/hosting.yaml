@@ -28,8 +28,16 @@ Resources:
       FunctionCode: |
         function handler(event) {
           var uri = event.request.uri;
+          // Extensionless files emitted by the Next build that are NOT pages —
+          // appending .html to these would 404 them. The OG image is the one
+          // that matters: break it and every Facebook share loses its card.
+          var ASSET_ROUTES = ['/opengraph-image', '/twitter-image', '/icon', '/apple-icon'];
+          for (var i = 0; i < ASSET_ROUTES.length; i++) {
+            if (uri === ASSET_ROUTES[i]) return event.request;
+          }
           // Root is handled by DefaultRootObject. Skip anything with a dot
-          // (assets, _next/, etc.). Append .html to clean app routes.
+          // (assets, _next/, robots.txt, sitemap.xml). Append .html to clean
+          // app routes.
           if (uri !== '/' && uri.indexOf('.') === -1) {
             event.request.uri = uri + '.html';
           }
@@ -85,12 +93,19 @@ Resources:
           FunctionAssociations:
             - EventType: viewer-request
               FunctionARN: !GetAtt UrlRewriteFunction.FunctionMetadata.FunctionARN
-        # SPA fallback: a private S3 bucket returns 403 for any missing key, so
-        # serve index.html (200) for unknown paths. Harmless for M1's single page.
+        # A private S3 bucket returns 403 for any missing key. Serve the real
+        # 404 page WITH a 404 status: the previous 200 + /index.html turned every
+        # typo'd URL into a soft 404 that rendered the homepage and told search
+        # engines it was a valid page. Next's static export emits 404.html, which
+        # was being generated and never served.
         CustomErrorResponses:
           - ErrorCode: 403
-            ResponseCode: 200
-            ResponsePagePath: /index.html
+            ResponseCode: 404
+            ResponsePagePath: /404.html
+            ErrorCachingMinTTL: 10
+          - ErrorCode: 404
+            ResponseCode: 404
+            ResponsePagePath: /404.html
             ErrorCachingMinTTL: 10
         ViewerCertificate:
           CloudFrontDefaultCertificate: true

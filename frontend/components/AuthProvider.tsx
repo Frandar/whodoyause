@@ -18,9 +18,14 @@ function isNewSignup(userId: string, createdAt: string | undefined): boolean {
   try {
     const seen: string[] = JSON.parse(localStorage.getItem(SEEN_USERS_KEY) || '[]');
     if (seen.includes(userId)) return false;
+    // Decide FIRST, then record. Marking the user as seen before the age check
+    // meant a missing/stale created_at burned the only chance to ever fire
+    // `signup` for that account — the event feeds Gate 2, so it read low.
+    const isNew = Boolean(
+      createdAt && Date.now() - new Date(createdAt).getTime() < SIGNUP_MAX_AGE_MS,
+    );
     localStorage.setItem(SEEN_USERS_KEY, JSON.stringify([...seen, userId]));
-    if (!createdAt) return false;
-    return Date.now() - new Date(createdAt).getTime() < SIGNUP_MAX_AGE_MS;
+    return isNew;
   } catch {
     // localStorage unavailable (private mode) — can't dedupe, so skip rather
     // than risk counting a signup on every sign-in.
@@ -59,7 +64,8 @@ type AuthValue = {
   userId: string | null;
   signedIn: boolean;
   loading: boolean;
-  sendMagicLink: (email: string, name?: SignupName) => Promise<SendLinkResult>;
+  // `next` is the same-origin path to return to after the link is clicked.
+  sendMagicLink: (email: string, name?: SignupName, next?: string) => Promise<SendLinkResult>;
   signOut: () => Promise<void>;
 };
 
@@ -98,23 +104,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => listener.subscription.unsubscribe();
   }, []);
 
-  async function sendMagicLink(addr: string, name?: SignupName): Promise<SendLinkResult> {
+  async function sendMagicLink(
+    addr: string,
+    name?: SignupName,
+    next?: string,
+  ): Promise<SendLinkResult> {
     const first = name?.firstName.trim() ?? '';
     const last = name?.lastName.trim() ?? '';
     const isSignup = Boolean(first || last);
+    // Where the magic link lands. WITHOUT this, Supabase falls back to the
+    // project's Site URL, so a neighbor who clicked "Recommend a pro" → sign in
+    // → email link arrived at the site root with their intent lost. The `next`
+    // param the sign-in page computes was only ever honoured for users who were
+    // already signed in.
+    // Only same-origin relative paths are accepted (see safeNext on the sign-in
+    // page); we re-derive the absolute URL here so an attacker-supplied absolute
+    // URL can never reach Supabase.
+    const emailRedirectTo =
+      typeof window !== 'undefined'
+        ? `${window.location.origin}${next && next.startsWith('/') && !next.startsWith('//') ? next : '/'}`
+        : undefined;
     // Signup collects a name and creates the account (data → user_metadata, which
     // Supabase applies only on creation). Login passes no name and shouldCreateUser
     // false, so accounts only ever exist with a name attached — a returning user
     // never re-enters their name, and a typo'd login can't spawn a nameless account.
     const options = isSignup
       ? {
+          emailRedirectTo,
           data: {
             first_name: first,
             last_name: last,
             name: [first, last].filter(Boolean).join(' '),
           },
         }
-      : { shouldCreateUser: false };
+      : { emailRedirectTo, shouldCreateUser: false };
     const { error } = await getSupabase().auth.signInWithOtp({ email: addr, options });
     if (!error) return { ok: true };
     const msg = error.message.toLowerCase();

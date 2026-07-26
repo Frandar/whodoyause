@@ -77,10 +77,15 @@ def lambda_handler(event: dict, _context) -> dict:
 
         if method == "GET" and path == "/recommendations/search":
             params = event.get("queryStringParameters") or {}
+            limit, offset = recommendations.parse_pagination(params)
             try:
                 # search() validates q (presence/length) and raises InvalidInput.
                 result = recommendations.search(
-                    params.get("q"), params.get("category"), _optional_user_id(event)
+                    params.get("q"),
+                    params.get("category"),
+                    _optional_user_id(event),
+                    limit,
+                    offset,
                 )
             except recommendations.InvalidInput as exc:
                 return _response(400, {"error": {"code": "invalid_input", "message": str(exc)}})
@@ -125,6 +130,12 @@ def lambda_handler(event: dict, _context) -> dict:
                 result = recommendations.update_note(claims, segments[1], body.get("note"))
             except recommendations.InvalidInput as exc:
                 return _response(400, {"error": {"code": "invalid_input", "message": str(exc)}})
+            return _response(result["statusCode"], result["body"])
+
+        # DELETE /recommendations/{id}  (founder-only moderation removal; AUTH)
+        if method == "DELETE" and len(segments) == 2 and segments[0] == "recommendations":
+            claims = verify_token(_auth_header(event))
+            result = recommendations.delete_recommendation(claims, segments[1])
             return _response(result["statusCode"], result["body"])
 
         # POST /recommendations/{id}/suggest-edit  (queues a correction; AUTH)

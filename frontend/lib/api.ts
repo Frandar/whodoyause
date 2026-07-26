@@ -61,10 +61,62 @@ export type AddResult =
 
 export type CategoryCount = { category: string; count: number };
 
+// --- runtime validation at the network boundary ---
+// The API responses are typed above, but TypeScript can't police what actually
+// arrives. A backend shape change (a renamed field, a deploy skew) would
+// type-check clean and then blow up mid-render with no error boundary to catch
+// it. These guards are deliberately shallow: they check the fields the UI
+// actually dereferences, and normalise nullable ones — not a schema library.
+
+function isRecommendation(v: unknown): v is Recommendation {
+  if (typeof v !== 'object' || v === null) return false;
+  const r = v as Record<string, unknown>;
+  return (
+    typeof r.id === 'string' &&
+    typeof r.business_name === 'string' &&
+    typeof r.category === 'string' &&
+    typeof r.endorsement_count === 'number' &&
+    typeof r.created_by_name === 'string'
+  );
+}
+
+function parseRecommendations(data: unknown): Recommendation[] {
+  if (!Array.isArray(data)) throw new Error('Malformed response: expected a list');
+  const rows = data.filter(isRecommendation);
+  if (rows.length !== data.length) {
+    // Drop bad rows rather than failing the whole page, but make it visible.
+    console.error('Dropped %d malformed recommendation(s)', data.length - rows.length);
+  }
+  // endorsement_notes is dereferenced directly by the card — guarantee an array.
+  return rows.map((r) => ({
+    ...r,
+    endorsement_notes: Array.isArray(r.endorsement_notes) ? r.endorsement_notes : [],
+  }));
+}
+
+function parseCategoryCounts(data: unknown): CategoryCount[] {
+  if (!Array.isArray(data)) throw new Error('Malformed response: expected a list');
+  return data.filter(
+    (c): c is CategoryCount =>
+      typeof c === 'object' &&
+      c !== null &&
+      typeof (c as CategoryCount).category === 'string' &&
+      typeof (c as CategoryCount).count === 'number',
+  );
+}
+
+// Read helpers throw on failure; write helpers return result unions (see the
+// note above endorse()). That split is deliberate and now documented in one
+// place: a failed read has exactly one sensible UI response — show the error
+// state and offer a retry — whereas a failed write has several distinct
+// outcomes (duplicate, unauthenticated, invalid) the caller must branch on.
+// Every read call site MUST attach a .catch; the browse page's `error` state and
+// the landing page's silent-placeholder fallback are the two accepted handlers.
+
 export async function getCategoryCounts(): Promise<CategoryCount[]> {
   const res = await fetch(`${API_BASE}/recommendations/categories`);
   if (!res.ok) throw new Error('Failed to load categories');
-  return res.json();
+  return parseCategoryCounts(await res.json());
 }
 
 export async function getRecommendations(
@@ -79,20 +131,24 @@ export async function getRecommendations(
   const headers = await authHeader();
   const res = await fetch(`${API_BASE}/recommendations?${params.toString()}`, { headers });
   if (!res.ok) throw new Error('Failed to load recommendations');
-  return res.json();
+  return parseRecommendations(await res.json());
 }
 
 export async function searchRecommendations(
   query: string,
   category?: string,
+  limit?: number,
+  offset?: number,
 ): Promise<Recommendation[]> {
   const params = new URLSearchParams({ q: query });
   if (category) params.set('category', category);
+  if (limit != null) params.set('limit', String(limit));
+  if (offset != null) params.set('offset', String(offset));
   // Public, but send the JWT when present so the backend can fill endorsed_by_me.
   const headers = await authHeader();
   const res = await fetch(`${API_BASE}/recommendations/search?${params.toString()}`, { headers });
   if (!res.ok) throw new Error('Search failed');
-  return res.json();
+  return parseRecommendations(await res.json());
 }
 
 export type EndorseResult =

@@ -358,7 +358,7 @@ def test_search_unknown_category_raises():
         rec.search("plumber", "Wizardry")
 
 
-def test_search_uses_websearch_tsquery_and_ranks():
+def test_search_uses_prefix_tsquery_and_ranks():
     rows = [_summary_row("a", "Ace Plumbing", "Plumber", None, 4, "Mike", False)]
     captured = {}
     def execute_fn(sql, params):
@@ -367,16 +367,44 @@ def test_search_uses_websearch_tsquery_and_ranks():
         return _Cursor(rows=rows)
     with patch.object(rec.db, "get_connection", return_value=_Conn(execute_fn)):
         result = rec.search("plumber")
-    assert "websearch_to_tsquery('english', %s)" in captured["sql"]
+    assert "to_tsquery('english', %s)" in captured["sql"]
     assert "order by r.endorsement_count desc" in captured["sql"]
-    assert captured["params"] == ("plumber",)  # bound param, not interpolated
+    assert "limit %s offset %s" in captured["sql"]
+    # bound param, not interpolated; last term gets the :* prefix marker
+    assert captured["params"] == ("plumber:*", rec.DEFAULT_PAGE_SIZE, 0)
     assert result["body"][0]["business_name"] == "Ace Plumbing"
+
+
+def test_search_prefix_matches_partial_word():
+    """The autocomplete fires at 2 chars, so "plumb" must match "Plumber"."""
+    assert rec._prefix_tsquery("plumb") == "plumb:*"
+    # Earlier terms are ANDed and exact; only the word being typed is a prefix.
+    assert rec._prefix_tsquery("ace plumb") == "ace & plumb:*"
+
+
+def test_prefix_tsquery_strips_tsquery_operators():
+    """Operators must not survive into the tsquery — the value is a bound param,
+    but a stray `!` or `:` would still make to_tsquery raise and 500 the request."""
+    assert rec._prefix_tsquery("joe's | plumbing!") == "joe & s & plumbing:*"
+    assert rec._prefix_tsquery("!!!") == ""
+
+
+def test_search_falls_back_to_websearch_when_query_has_no_terms():
+    captured = {}
+    def execute_fn(sql, params):
+        captured["sql"] = sql
+        captured["params"] = params
+        return _Cursor(rows=[])
+    with patch.object(rec.db, "get_connection", return_value=_Conn(execute_fn)):
+        rec.search("!!!")
+    assert "websearch_to_tsquery('english', %s)" in captured["sql"]
+    assert captured["params"][0] == "!!!"
 
 
 def test_search_with_category_filter():
     def execute_fn(sql, params):
         assert "and r.category = %s" in sql
-        assert params == ("plumber", "Plumber")
+        assert params == ("plumber:*", "Plumber", rec.DEFAULT_PAGE_SIZE, 0)
         return _Cursor(rows=[])
     with patch.object(rec.db, "get_connection", return_value=_Conn(execute_fn)):
         rec.search("plumber", "Plumber")
@@ -390,8 +418,29 @@ def test_search_with_viewer_orders_params_join_query_category():
         return _Cursor(rows=[])
     with patch.object(rec.db, "get_connection", return_value=_Conn(execute_fn)):
         rec.search("plumber", "Plumber", viewer)
-    # viewer ×3 (created_by_me, is_mine subquery, join) → query → category
-    assert captured["params"] == (viewer, viewer, viewer, "plumber", "Plumber")
+    # viewer ×3 (created_by_me, is_mine subquery, join) → query → category → page
+    assert captured["params"] == (
+        viewer, viewer, viewer, "plumber:*", "Plumber", rec.DEFAULT_PAGE_SIZE, 0,
+    )
+
+
+def test_search_applies_limit_and_offset():
+    captured = {}
+    def execute_fn(sql, params):
+        captured["params"] = params
+        return _Cursor(rows=[])
+    with patch.object(rec.db, "get_connection", return_value=_Conn(execute_fn)):
+        rec.search("plumber", None, None, 5, 10)
+    assert captured["params"] == ("plumber:*", 5, 10)
+
+
+def test_search_zero_results_on_later_page_is_not_a_content_gap(capsys):
+    """An empty page 3 is exhausted pagination, not a missing category."""
+    def execute_fn(sql, params):
+        return _Cursor(rows=[])
+    with patch.object(rec.db, "get_connection", return_value=_Conn(execute_fn)):
+        rec.search("plumber", None, None, 20, 40)
+    assert "ZERO_RESULTS" not in capsys.readouterr().out
 
 
 def test_search_zero_results_logs_content_gap(capsys):
@@ -577,13 +626,22 @@ def test_delete_note_invalid_uuid_returns_404():
     assert result["statusCode"] == 404
 
 
+def _note_execute(captured=None):
+    """Fake execute for the delete_note path: the UPDATE returns nothing, then
+    the existence probe (`select endorsement_count`) returns a row."""
+    def execute_fn(sql, params):
+        if captured is not None and sql.startswith("update endorsement"):
+            captured["sql"] = sql
+            captured["params"] = params
+        if sql.startswith("select endorsement_count"):
+            return _Cursor((3,))
+        return _Cursor(None)
+    return execute_fn
+
+
 def test_delete_note_clears_note_keeps_endorsement():
     captured = {}
-    def execute_fn(sql, params):
-        captured["sql"] = sql
-        captured["params"] = params
-        return _Cursor(None)
-    with patch.object(rec.db, "get_connection", return_value=_Conn(execute_fn)):
+    with patch.object(rec.db, "get_connection", return_value=_Conn(_note_execute(captured))):
         result = rec.delete_note(CLAIMS, VALID_ID)
     assert result["statusCode"] == 200
     # Clears the note only — never deletes the endorsement row (the +1 stays).
@@ -592,16 +650,29 @@ def test_delete_note_clears_note_keeps_endorsement():
     assert captured["params"] == (VALID_ID, CLAIMS["sub"])
 
 
+def test_delete_note_missing_recommendation_returns_404():
+    """A well-formed UUID that doesn't exist is a 404, not a cheerful 200."""
+    def execute_fn(sql, params):
+        return _Cursor(None)  # existence probe finds nothing
+    with patch.object(rec.db, "get_connection", return_value=_Conn(execute_fn)):
+        assert rec.delete_note(CLAIMS, VALID_ID)["statusCode"] == 404
+
+
+def test_unendorse_missing_recommendation_returns_404():
+    def execute_fn(sql, params):
+        return _Cursor(None)
+    with patch.object(rec.db, "get_connection", return_value=_Conn(execute_fn)):
+        assert rec.unendorse(CLAIMS, VALID_ID)["statusCode"] == 404
+
+
 def test_delete_note_route_requires_auth():
     resp = lambda_handler(_event("DELETE", f"/recommendations/{VALID_ID}/note"), None)
     assert resp["statusCode"] == 401
 
 
 def test_delete_note_route_dispatches_with_auth():
-    def execute_fn(sql, params):
-        return _Cursor(None)
     with patch("src.handler.verify_token", return_value=CLAIMS), \
-         patch.object(rec.db, "get_connection", return_value=_Conn(execute_fn)):
+         patch.object(rec.db, "get_connection", return_value=_Conn(_note_execute())):
         resp = lambda_handler(
             _event("DELETE", f"/recommendations/{VALID_ID}/note",
                    headers={"authorization": "Bearer ok"}),
@@ -791,3 +862,112 @@ def test_suggest_edit_route_malformed_json_returns_400():
         )
     assert resp["statusCode"] == 400
     assert json.loads(resp["body"])["error"]["code"] == "invalid_json"
+
+
+# --- input hardening (F-18, F-32) ---
+
+def test_display_name_is_capped_and_sanitized():
+    """user_metadata is client-controlled: cap length, strip control chars."""
+    long_claims = {"sub": CLAIMS["sub"], "user_metadata": {"name": "A" * 500}}
+    assert len(rec._full_name(long_claims)) == rec.DISPLAY_NAME_MAX
+    messy = {"sub": CLAIMS["sub"],
+             "user_metadata": {"first_name": "Mi ke", "last_name": "  Ri  vera "}}
+    assert rec._full_name(messy) == "Mi ke Ri vera"
+    assert rec._full_name({"sub": "x", "user_metadata": {"name": 42}}) is None
+
+
+def test_url_fields_reject_non_http_schemes():
+    for bad in ("javascript://%0aalert(1)", "data:text/html,<script>", "file:///etc/passwd"):
+        with pytest.raises(rec.InvalidInput):
+            rec._contact_fields({"website": bad})
+
+
+def test_bare_domain_still_gets_https_prefix():
+    assert rec._contact_fields({"website": "joesplumbing.com"})["website"] == \
+        "https://joesplumbing.com"
+    assert rec._contact_fields({"website": "http://joes.com"})["website"] == "http://joes.com"
+
+
+def test_phone_strips_injection_characters():
+    assert rec._contact_fields({"phone": "(555) 123-4567"})["phone"] == "(555) 123-4567"
+    assert rec._contact_fields({"phone": "555-1234?body=hi"})["phone"] == "555-1234"
+
+
+def test_email_rejects_mailto_parameters():
+    assert rec._contact_fields({"email": "joe@x.com"})["email"] == "joe@x.com"
+    newline_injection = "a@b.com" + chr(13) + chr(10) + "Bcc: eve@evil.com"
+    for bad in ("joe@x.com?bcc=a@b.com", "joe@x.com,eve@evil.com", newline_injection):
+        with pytest.raises(rec.InvalidInput):
+            rec._contact_fields({"email": bad})
+
+
+# --- moderation (F-02) ---
+
+MOD_ID = "99999999-9999-9999-9999-999999999999"
+MOD_CLAIMS = {"sub": MOD_ID, "user_metadata": {"name": "Founder One"}}
+
+
+def test_moderation_fails_closed_when_unconfigured(monkeypatch):
+    monkeypatch.delenv("MODERATOR_USER_IDS", raising=False)
+    assert rec.is_moderator(MOD_CLAIMS) is False
+    assert rec.delete_recommendation(MOD_CLAIMS, VALID_ID)["statusCode"] == 403
+
+
+def test_non_moderator_cannot_delete(monkeypatch):
+    monkeypatch.setenv("MODERATOR_USER_IDS", MOD_ID)
+    assert rec.delete_recommendation(CLAIMS, VALID_ID)["statusCode"] == 403
+
+
+def test_moderator_deletes_and_logs(monkeypatch, capsys):
+    monkeypatch.setenv("MODERATOR_USER_IDS", f" {MOD_ID} , other-id ")
+    captured = {}
+    def execute_fn(sql, params):
+        captured["sql"] = sql
+        return _Cursor(("Spam Plumbing", "Plumber"))
+    with patch.object(rec.db, "get_connection", return_value=_Conn(execute_fn)):
+        result = rec.delete_recommendation(MOD_CLAIMS, VALID_ID)
+    assert result["statusCode"] == 200
+    assert "delete from recommendation where id = %s" in captured["sql"]
+    assert "MODERATION_DELETE" in capsys.readouterr().out
+
+
+def test_moderator_delete_missing_returns_404(monkeypatch):
+    monkeypatch.setenv("MODERATOR_USER_IDS", MOD_ID)
+    def execute_fn(sql, params):
+        return _Cursor(None)
+    with patch.object(rec.db, "get_connection", return_value=_Conn(execute_fn)):
+        assert rec.delete_recommendation(MOD_CLAIMS, VALID_ID)["statusCode"] == 404
+
+
+def test_delete_route_requires_auth():
+    resp = lambda_handler(_event("DELETE", f"/recommendations/{VALID_ID}"), None)
+    assert resp["statusCode"] == 401
+
+
+def test_delete_route_dispatches_to_moderation(monkeypatch):
+    monkeypatch.setenv("MODERATOR_USER_IDS", MOD_ID)
+    def execute_fn(sql, params):
+        return _Cursor(("Spam Plumbing", "Plumber"))
+    with patch("src.handler.verify_token", return_value=MOD_CLAIMS), \
+         patch.object(rec.db, "get_connection", return_value=_Conn(execute_fn)):
+        resp = lambda_handler(
+            _event("DELETE", f"/recommendations/{VALID_ID}",
+                   headers={"authorization": "Bearer ok"}),
+            None,
+        )
+    assert resp["statusCode"] == 200
+
+
+# --- logging hygiene (F-33) ---
+
+def test_suggest_edit_log_omits_values_and_submitter(capsys):
+    def execute_fn(sql, params):
+        # Distinct from CLAIMS["sub"] so the "submitter id absent" assert is real.
+        return _Cursor(("abcdef00-0000-0000-0000-000000000abc",))
+    with patch.object(rec.db, "get_connection", return_value=_Conn(execute_fn)):
+        rec.suggest_edit(CLAIMS, VALID_ID, {"phone": "(555) 123-4567", "message": "wrong"})
+    out = capsys.readouterr().out
+    assert "EDIT_SUGGESTION" in out
+    assert "fields=['phone']" in out
+    assert "555" not in out
+    assert CLAIMS["sub"] not in out

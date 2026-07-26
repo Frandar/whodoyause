@@ -26,11 +26,34 @@
   --accent: #e6efe7;             /* hover surface (shadcn ghost/outline hover) */
   --accent-foreground: #15493f;
 
+  /* Ink scale — replaces ~9 one-off greys that were typed into components.
+     Every value is AA (4.5:1) against BOTH cream and white, so a component can
+     move between surfaces without silently dropping below the floor. */
+  --ink-muted: #5f6d64;          /* 5.05:1 cream / 6.44:1 white — secondary text */
+  --ink-subtle: #52635a;         /* 6.38:1 white — tertiary text, still AA */
+  --ink-eyebrow: #55665c;        /* section eyebrows; AA on cream AND #e9f1ea */
+
+  /* Tinted surfaces — were #eaf3ee / #f1f6f1 / #f6faf5 / #e9f1ea / #fffdf9. */
+  --surface-tint: #eaf3ee;       /* chips, icon wells */
+  --surface-quote: #f1f6f1;      /* neighbor note / blockquote background */
+  --surface-band: #e9f1ea;       /* full-width pale green band (How it works) */
+  --surface-raised: #fffdf9;     /* slightly-lifted cream section */
+
   --amber: #ffc23d;              /* golden amber — CTA button (most important action) */
   --amber-deep: #e3a84a;         /* gold hover/pressed (FRONTEND.md --accent-gold-deep) */
   --amber-foreground: #1a1a1a;   /* near-black ink on amber */
 
-  --on-green-muted: #9fb6ab;     /* muted sage text on green fields — AA at small sizes */
+  /* Text/surfaces on the deep-green fields. All verified AA against their own
+     background, so they are token-safe: --on-green-muted 4.74:1 on --primary,
+     --on-green-subtle 4.60:1 on --green-deep, --on-green-soft 7.08:1. */
+  --on-green-muted: #9fb6ab;     /* muted sage text on green fields */
+  --on-green-subtle: #7f968b;    /* footer legal row on --green-deep */
+  --on-green-soft: #c7dccf;      /* body copy on green (CTA band) */
+  --on-green-body: #cdddd4;      /* footer body text */
+  --on-green-faint: #9fbcae;     /* green-band footnote */
+  --green-deep: #102e28;         /* footer field */
+
+  --border-strong: #c7dccf;      /* emphasised hairline (e.g. "this is yours") */
 
   --destructive: #b00020;        /* FRONTEND.md --danger */
   --destructive-foreground: #ffffff;
@@ -41,9 +64,21 @@
   --warning: #b66a00;
   --warning-foreground: #ffffff;
 
-  --border: #d4e1d8;             /* from rgba(20,40,30,.08) over cream canvas */
-  --input: #d4e1d8;
-  --ring: #ffc23d;               /* gold focus glow — visible on green AND cream fields */
+  --border: #d4e1d8;             /* decorative hairlines/dividers — not a control boundary */
+  /* Form-control boundary. WCAG 2.2 SC 1.4.11 wants 3:1 for UI component
+     boundaries; the old #d4e1d8 measured 1.35:1 on white, so fields had no
+     perceivable edge. */
+  --input: #81938d;              /* 3.23:1 on white, 3.00:1 on cream — the
+                                    lightest brand-hue grey that clears 3:1 on
+                                    both surfaces */
+
+  /* Focus rings. Gold reads beautifully on the deep-green fields (6.34:1) but
+     measures 1.50:1 on cream and 1.61:1 on white — far under the 3:1 that
+     SC 1.4.11 requires of a focus indicator. So the ring is surface-dependent:
+     --ring is the default for light surfaces, --ring-on-dark for green ones.
+     Never use gold as a focus ring on cream/white. */
+  --ring: #15493f;               /* 9.02:1 on cream, 10.4:1 on white */
+  --ring-on-dark: #ffc23d;       /* 6.34:1 on --primary green */
 
   /* Soft elevations — green-tinted shadows to match the brand. */
   --shadow-soft: 0 1px 2px rgb(8 30 22 / 0.04), 0 4px 16px rgb(8 30 22 / 0.06);
@@ -66,10 +101,23 @@
   --color-muted-foreground: var(--muted-foreground);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
+  --color-ink-muted: var(--ink-muted);
+  --color-ink-subtle: var(--ink-subtle);
+  --color-ink-eyebrow: var(--ink-eyebrow);
+  --color-surface-tint: var(--surface-tint);
+  --color-surface-quote: var(--surface-quote);
+  --color-surface-band: var(--surface-band);
+  --color-surface-raised: var(--surface-raised);
   --color-amber: var(--amber);
   --color-amber-deep: var(--amber-deep);
   --color-amber-foreground: var(--amber-foreground);
   --color-on-green-muted: var(--on-green-muted);
+  --color-on-green-subtle: var(--on-green-subtle);
+  --color-on-green-soft: var(--on-green-soft);
+  --color-on-green-body: var(--on-green-body);
+  --color-on-green-faint: var(--on-green-faint);
+  --color-green-deep: var(--green-deep);
+  --color-border-strong: var(--border-strong);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
   --color-success: var(--success);
@@ -79,6 +127,7 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-ring-on-dark: var(--ring-on-dark);
 
   --radius-sm: calc(var(--radius) - 10px);
   --radius-md: calc(var(--radius) - 6px);

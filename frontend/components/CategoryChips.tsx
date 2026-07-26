@@ -30,7 +30,7 @@ export function CategoryChips({
           >
             {category}
             {count > 0 && (
-              <span className={cn('ml-1.5 font-semibold', isSelected ? 'opacity-80' : 'text-[#6a786f]')}>
+              <span className={cn('ml-1.5 font-semibold', isSelected ? 'opacity-80' : 'text-ink-muted')}>
                 {count}
               </span>
             )}

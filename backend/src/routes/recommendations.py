@@ -1,3 +1,5 @@
+import os
+import re
 import uuid
 
 import psycopg
@@ -7,6 +9,9 @@ from src import db
 from src.categories import CATEGORIES, CATEGORY_SET
 
 BUSINESS_NAME_MAX = 200
+# Display names come from client-controlled JWT user_metadata, so they need the
+# same length discipline as every other user string here.
+DISPLAY_NAME_MAX = 80
 NOTE_MAX = 1000
 QUERY_MAX = 100
 SUGGESTION_MESSAGE_MAX = 1000
@@ -38,17 +43,47 @@ class InvalidInput(Exception):
     """Raised on bad request input → handler maps to 400."""
 
 
+def _moderator_ids() -> frozenset[str]:
+    """Founder user ids allowed to delete content, from MODERATOR_USER_IDS
+    (comma-separated). Read per call rather than at import so the env var can be
+    changed without a code deploy. Empty by default: if it isn't configured,
+    nobody can moderate — fail closed."""
+    raw = os.environ.get("MODERATOR_USER_IDS", "")
+    return frozenset(part.strip() for part in raw.split(",") if part.strip())
+
+
+def is_moderator(claims: dict) -> bool:
+    """The ONLY privilege check in the codebase. ARCHITECTURE §0 keeps authz to
+    "valid JWT → may write"; this is a deliberate, minimal exception for content
+    removal, which cannot be self-scoped the way editing your own note can."""
+    return claims.get("sub") in _moderator_ids()
+
+
+def _clean_name(value: object) -> str:
+    """Normalize one name part from JWT metadata: strings only, control chars
+    stripped, whitespace collapsed. `user_metadata` is client-controlled (a user
+    can call auth.updateUser with anything), so it is untrusted input."""
+    if not isinstance(value, str):
+        return ""
+    without_controls = "".join(ch for ch in value if ch.isprintable())
+    return re.sub(r"\s+", " ", without_controls).strip()
+
+
 def _full_name(claims: dict) -> str | None:
     """The full name given at signup (Supabase user_metadata) — first + last, or
     a combined `name`. We store this in app_user. NEVER the email. Returns None
-    when no name is set so callers can apply the fallback."""
+    when no name is set so callers can apply the fallback.
+
+    Sanitized and length-capped: the value is client-controlled and lands in
+    every card payload via json_agg, so an unbounded name would bloat every
+    read. Truncation is silent — a name is not worth failing a write over."""
     metadata = claims.get("user_metadata") or {}
-    first = (metadata.get("first_name") or "").strip()
-    last = (metadata.get("last_name") or "").strip()
+    first = _clean_name(metadata.get("first_name"))
+    last = _clean_name(metadata.get("last_name"))
     full = f"{first} {last}".strip()
     if not full:
-        full = (metadata.get("name") or "").strip()
-    return full or None
+        full = _clean_name(metadata.get("name"))
+    return full[:DISPLAY_NAME_MAX] or None
 
 
 def _abbreviate(name: str | None) -> str:
@@ -72,17 +107,46 @@ def _require_str(body: dict, key: str) -> str:
     return value.strip()
 
 
-def _normalize_url(value: str) -> str:
-    """Prepend https:// to a bare domain so the link is clickable. We keep this
-    deliberately light — no strict URL validation (that just causes drop-off)."""
-    if value and "://" not in value:
+# Only these schemes may end up in a card's href. Everything else is rejected
+# rather than silently rewritten — a recommender has no legitimate reason to
+# point "Website" at a data:, file: or javascript: URL, and these links inherit
+# a named neighbor's trust, which is exactly what makes them worth abusing.
+_ALLOWED_URL_SCHEMES = ("http://", "https://")
+
+
+def _normalize_url(value: str, key: str) -> str:
+    """Prepend https:// to a bare domain so the link is clickable, and reject
+    any non-http(s) scheme. Still deliberately light on *format* validation —
+    strict URL parsing just causes drop-off — but the scheme is not negotiable."""
+    if not value:
+        return value
+    lowered = value.lower()
+    if "://" not in value and ":" not in value.split("/")[0]:
+        # Bare domain like "joesplumbing.com" — the common case.
         return "https://" + value
+    if not lowered.startswith(_ALLOWED_URL_SCHEMES):
+        raise InvalidInput(f"{key} must be a http:// or https:// link")
+    return value
+
+
+def _sanitize_phone(value: str) -> str:
+    """Keep only characters that are meaningful to a dialler. Blocks header/param
+    injection into the `tel:` href the client builds."""
+    return re.sub(r"[^0-9+()\-.\s]", "", value).strip()
+
+
+def _sanitize_email(value: str, key: str) -> str:
+    """A single address, no mailto: parameters. Without this, a value like
+    "a@b.com?bcc=…&body=…" pre-populates the viewer's mail client."""
+    if any(ch in value for ch in "?&\r\n,;") or value.count("@") != 1:
+        raise InvalidInput(f"{key} must be a single email address")
     return value
 
 
 def _contact_fields(body: dict) -> dict:
-    """Parse, length-check and lightly normalize the optional contact fields.
-    Returns {column: value_or_None}. Raises InvalidInput on an over-length field."""
+    """Parse, length-check, sanitize and lightly normalize the optional contact
+    fields. Returns {column: value_or_None}. Raises InvalidInput on an
+    over-length, malformed or unsafe field."""
     values: dict = {}
     for key, column, max_len in CONTACT_FIELDS:
         value = _require_str(body, key) or None
@@ -90,7 +154,11 @@ def _contact_fields(body: dict) -> dict:
             if len(value) > max_len:
                 raise InvalidInput(f"{key} is too long")
             if column in _URL_FIELDS:
-                value = _normalize_url(value)
+                value = _normalize_url(value, key)
+            elif column == "phone":
+                value = _sanitize_phone(value) or None
+            elif column == "email":
+                value = _sanitize_email(value, key)
         values[column] = value
     return values
 
@@ -322,11 +390,44 @@ def category_counts() -> dict:
     }
 
 
-def search(query: str, category: str | None = None, user_id: str | None = None) -> dict:
-    """Public full-text search (US1). Uses websearch_to_tsquery with a bound
-    param (never string-interpolated), ranked by endorsements. Zero-result
-    queries are logged server-side as a content-gap signal. A valid JWT is
-    optional; when present it populates endorsed_by_me."""
+def _prefix_tsquery(query: str) -> str:
+    """Turn a user query into a prefix-matching tsquery string.
+
+    `websearch_to_tsquery` does no prefix matching: the lexeme for "plumb" never
+    matches the stored lexeme "plumber", so an autocomplete that fires at two
+    characters returned nothing for most of the typing session. We build the
+    query ourselves instead: split on non-word characters, AND the terms, and
+    suffix the LAST term with `:*` so the word being typed matches as a prefix.
+
+    Terms are stripped to word characters before interpolation, so nothing that
+    could be tsquery syntax (`&`, `|`, `!`, `:`, parens) survives — the result is
+    still passed to `to_tsquery` as a BOUND parameter, never concatenated into
+    the SQL text."""
+    terms = [t for t in re.split(r"[^\w]+", query) if t]
+    if not terms:
+        return ""
+    *leading, last = terms
+    return " & ".join([*leading, f"{last}:*"])
+
+
+def search(
+    query: str,
+    category: str | None = None,
+    user_id: str | None = None,
+    limit: int = DEFAULT_PAGE_SIZE,
+    offset: int = 0,
+) -> dict:
+    """Public full-text search (US1), ranked by endorsements.
+
+    The tsquery is built by _prefix_tsquery (so the word being typed matches as a
+    prefix) and passed to `to_tsquery` as a bound param — never string-interpolated
+    into the SQL. Falls back to `websearch_to_tsquery` when the query reduces to
+    nothing usable, so quoted phrases and operators still behave.
+
+    Zero-result queries are logged server-side as a content-gap signal. A valid
+    JWT is optional; when present it populates endorsed_by_me. Paginated like
+    list_by_category — an unbounded result set was being serialised into one
+    Lambda response on every keystroke."""
     query = (query or "").strip()
     if not query:
         raise InvalidInput("q is required")
@@ -335,20 +436,30 @@ def search(query: str, category: str | None = None, user_id: str | None = None) 
     if category is not None and category not in CATEGORY_SET:
         raise InvalidInput("unknown category")
 
-    sql = _list_select(user_id) + " where r.search_vector @@ websearch_to_tsquery('english', %s)"
+    prefix = _prefix_tsquery(query)
+    if prefix:
+        match_sql = "r.search_vector @@ to_tsquery('english', %s)"
+        match_param = prefix
+    else:
+        match_sql = "r.search_vector @@ websearch_to_tsquery('english', %s)"
+        match_param = query
+
+    sql = _list_select(user_id) + f" where {match_sql}"
     # Viewer params (created_by_me, is_mine subquery, then join) precede the
     # WHERE params — see _list_select.
-    params: list = ([user_id, user_id, user_id] if user_id else []) + [query]
+    params: list = ([user_id, user_id, user_id] if user_id else []) + [match_param]
     if category:
         sql += " and r.category = %s"
         params.append(category)
-    sql += " order by r.endorsement_count desc, r.created_at desc"
+    sql += " order by r.endorsement_count desc, r.created_at desc limit %s offset %s"
+    params += [limit, offset]
 
     with db.get_connection() as conn:
         rows = conn.execute(sql, tuple(params)).fetchall()
 
-    if not rows:
-        # Content-gap signal (US1) — surfaced in CloudWatch.
+    if not rows and offset == 0:
+        # Content-gap signal (US1) — surfaced in CloudWatch. Only on the first
+        # page: an empty page 3 is exhausted pagination, not a content gap.
         print(f"ZERO_RESULTS query={query!r} category={category!r}", flush=True)
 
     return {"statusCode": 200, "body": [_to_summary(r) for r in rows]}
@@ -362,14 +473,22 @@ def _is_uuid(value: str) -> bool:
         return False
 
 
-def _endorsement_count(conn, recommendation_id: str) -> int:
+def _not_found() -> dict:
+    return {
+        "statusCode": 404,
+        "body": {"error": {"code": "not_found", "message": "Recommendation not found"}},
+    }
+
+
+def _endorsement_count(conn, recommendation_id: str) -> int | None:
     # endorsement_count is maintained by a DB trigger; in autocommit mode the
-    # trigger's update is committed before we read it back.
+    # trigger's update is committed before we read it back. Returns None when the
+    # recommendation doesn't exist, which callers map to 404.
     row = conn.execute(
         "select endorsement_count from recommendation where id = %s",
         (recommendation_id,),
     ).fetchone()
-    return row[0] if row else 0
+    return row[0] if row else None
 
 
 def endorse(claims: dict, recommendation_id: str, note: str | None = None) -> dict:
@@ -383,7 +502,7 @@ def endorse(claims: dict, recommendation_id: str, note: str | None = None) -> di
     On a fresh row the count trigger fires (an implicit +1); on conflict the note
     is updated and the count is untouched (no double count)."""
     if not _is_uuid(recommendation_id):
-        return {"statusCode": 404, "body": {"error": {"code": "not_found", "message": "Recommendation not found"}}}
+        return _not_found()
     if note is not None and len(note) > ENDORSEMENT_NOTE_MAX:
         raise InvalidInput("note is too long")
 
@@ -404,51 +523,66 @@ def endorse(claims: dict, recommendation_id: str, note: str | None = None) -> di
                 )
         except psycopg.errors.UniqueViolation:
             # Only reachable on the no-note fast path (the upsert absorbs conflicts).
+            count = _endorsement_count(conn, recommendation_id)
+            if count is None:
+                return _not_found()
             return {
                 "statusCode": 409,
                 "body": {
                     "error": {"code": "already_endorsed", "message": "You already +1'd this"},
                     "recommendation_id": recommendation_id,
-                    "endorsement_count": _endorsement_count(conn, recommendation_id),
+                    "endorsement_count": count,
                 },
             }
         except psycopg.errors.ForeignKeyViolation:
-            return {"statusCode": 404, "body": {"error": {"code": "not_found", "message": "Recommendation not found"}}}
+            return _not_found()
 
+        count = _endorsement_count(conn, recommendation_id)
+        if count is None:
+            return _not_found()
         return {
             "statusCode": 200,
             "body": {
                 "recommendation_id": recommendation_id,
-                "endorsement_count": _endorsement_count(conn, recommendation_id),
+                "endorsement_count": count,
             },
         }
 
 
 def unendorse(claims: dict, recommendation_id: str) -> dict:
-    """Remove a +1 (US3, optional). Idempotent."""
+    """Remove a +1 (US3, optional).
+
+    Idempotent with respect to the *endorsement* — removing a +1 you don't have
+    is a 200, not an error — but a recommendation that doesn't exist is a 404,
+    matching endorse(). Previously any well-formed UUID returned 200 with a
+    count of 0, which made a typo indistinguishable from success."""
     if not _is_uuid(recommendation_id):
-        return {"statusCode": 404, "body": {"error": {"code": "not_found", "message": "Recommendation not found"}}}
+        return _not_found()
 
     with db.get_connection() as conn:
         conn.execute(
             "delete from endorsement where recommendation_id = %s and user_id = %s",
             (recommendation_id, claims["sub"]),
         )
+        count = _endorsement_count(conn, recommendation_id)
+        if count is None:
+            return _not_found()
         return {
             "statusCode": 200,
             "body": {
                 "recommendation_id": recommendation_id,
-                "endorsement_count": _endorsement_count(conn, recommendation_id),
+                "endorsement_count": count,
             },
         }
 
 
 def delete_note(claims: dict, recommendation_id: str) -> dict:
-    """Clear the caller's own +1 note, keeping the +1 itself. Idempotent: a
-    no-op if they have no endorsement or no note. To remove the +1 entirely
-    (which also drops the note), use unendorse."""
+    """Clear the caller's own +1 note, keeping the +1 itself. Idempotent with
+    respect to the note (a no-op if they have no endorsement or no note), but
+    404s for a recommendation that doesn't exist — same contract as unendorse.
+    To remove the +1 entirely (which also drops the note), use unendorse."""
     if not _is_uuid(recommendation_id):
-        return {"statusCode": 404, "body": {"error": {"code": "not_found", "message": "Recommendation not found"}}}
+        return _not_found()
 
     with db.get_connection() as conn:
         conn.execute(
@@ -456,6 +590,8 @@ def delete_note(claims: dict, recommendation_id: str) -> dict:
             "where recommendation_id = %s and user_id = %s",
             (recommendation_id, claims["sub"]),
         )
+        if _endorsement_count(conn, recommendation_id) is None:
+            return _not_found()
     return {"statusCode": 200, "body": {"recommendation_id": recommendation_id}}
 
 
@@ -467,7 +603,7 @@ def update_note(claims: dict, recommendation_id: str, note: str | None) -> dict:
     doesn't exist or isn't the caller's yields 404. The search_vector trigger
     reindexes the note on update."""
     if not _is_uuid(recommendation_id):
-        return {"statusCode": 404, "body": {"error": {"code": "not_found", "message": "Recommendation not found"}}}
+        return _not_found()
 
     note = (note or "").strip() or None
     if note is not None and len(note) > NOTE_MAX:
@@ -482,7 +618,7 @@ def update_note(claims: dict, recommendation_id: str, note: str | None) -> dict:
 
     if row is None:
         # Either no such recommendation, or the caller didn't create it.
-        return {"statusCode": 404, "body": {"error": {"code": "not_found", "message": "Recommendation not found"}}}
+        return _not_found()
     return {"statusCode": 200, "body": {"id": recommendation_id, "note": row[0]}}
 
 
@@ -496,7 +632,7 @@ def suggest_edit(claims: dict, recommendation_id: str, body: dict) -> dict:
     normalized like create()); `message` is an optional free-text note. At least
     one of the two is required."""
     if not _is_uuid(recommendation_id):
-        return {"statusCode": 404, "body": {"error": {"code": "not_found", "message": "Recommendation not found"}}}
+        return _not_found()
 
     message = _require_str(body, "message") or None
     if message is not None and len(message) > SUGGESTION_MESSAGE_MAX:
@@ -515,13 +651,51 @@ def suggest_edit(claims: dict, recommendation_id: str, body: dict) -> dict:
                 (recommendation_id, claims["sub"], message, Jsonb(proposed)),
             ).fetchone()
         except psycopg.errors.ForeignKeyViolation:
-            return {"statusCode": 404, "body": {"error": {"code": "not_found", "message": "Recommendation not found"}}}
+            return _not_found()
 
     # Notify the founders' review queue via CloudWatch (mirrors ZERO_RESULTS).
-    # The durable record lives in edit_suggestion; this line surfaces it live.
+    # Only the suggestion id and which FIELDS changed — never the values or the
+    # submitter's id. The durable record (with values) lives in edit_suggestion,
+    # where retention is governed; logs are not the place for contact PII.
     print(
-        f"EDIT_SUGGESTION rec={recommendation_id} by={claims['sub']} "
-        f"proposed={proposed} message={message!r}",
+        f"EDIT_SUGGESTION id={row[0]} rec={recommendation_id} "
+        f"fields={sorted(proposed)} has_message={message is not None}",
         flush=True,
     )
     return {"statusCode": 201, "body": {"id": str(row[0])}}
+
+
+def delete_recommendation(claims: dict, recommendation_id: str) -> dict:
+    """Founder-only removal of a recommendation (spam/abuse moderation).
+
+    PRD §6 says moderation is manual by the founders; until now "manual" meant
+    the Supabase SQL editor, which is not a workable answer once the tool is
+    announced to a real group. This is deliberately the narrowest possible
+    mechanism: a comma-separated allow-list of founder user ids in an env var,
+    checked inline. It is NOT a role system and must not grow into one — if a
+    third person ever needs it, add their id to the env var.
+
+    Endorsements cascade via the FK; edit suggestions cascade too (003)."""
+    if not is_moderator(claims):
+        return {
+            "statusCode": 403,
+            "body": {"error": {"code": "forbidden", "message": "Not permitted"}},
+        }
+    if not _is_uuid(recommendation_id):
+        return _not_found()
+
+    with db.get_connection() as conn:
+        row = conn.execute(
+            "delete from recommendation where id = %s returning business_name, category",
+            (recommendation_id,),
+        ).fetchone()
+
+    if row is None:
+        return _not_found()
+    # Moderation actions are worth an audit line; a business name is not PII.
+    print(
+        f"MODERATION_DELETE rec={recommendation_id} by={claims['sub']} "
+        f"business={row[0]!r} category={row[1]!r}",
+        flush=True,
+    )
+    return {"statusCode": 200, "body": {"deleted": recommendation_id}}
