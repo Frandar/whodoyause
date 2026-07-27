@@ -157,6 +157,19 @@
   h1, h2, h3 {
     font-family: var(--font-display);
   }
+  /* Tailwind v4's preflight dropped the `button { cursor: pointer }` that v3
+     shipped, so a bare <button> renders with the arrow cursor and reads as
+     inert. The shadcn Button sets cursor-pointer in its own base class, but the
+     hand-rolled buttons (navbar sign out, the login/signup mode toggle, and ~8
+     others) did not — so the affected surfaces were exactly the ones shadcn
+     doesn't own. Restored here rather than at the call sites so the next
+     hand-rolled button can't regress it.
+     :disabled is excluded: a disabled control must not advertise itself as
+     clickable. */
+  button:not(:disabled),
+  [role='button']:not([aria-disabled='true']) {
+    cursor: pointer;
+  }
 }
 
 /* Scroll-reveal (design reference data-reveal): elements fade and rise into
