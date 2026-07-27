@@ -1,0 +1,230 @@
+<!--
+  WhoDoYaUse — magic-link sign-in email.
+
+  Paste into Supabase → Authentication → Email Templates → "Magic Link".
+  Versioned here because the Supabase dashboard is not a source of truth: the
+  only copy of a template edited in the browser is in the browser.
+
+  Constraints this file is written around, all of which look like over-caution
+  until an email renders wrong somewhere you can't reproduce:
+
+  - Every style is INLINE. Gmail strips <style> blocks in several contexts, so
+    the <style> block below carries only progressive enhancement (web font,
+    mobile tweaks) and nothing the layout depends on.
+  - Layout is TABLES, not divs. Outlook renders through Word, which has no
+    flexbox, no grid, and no max-width.
+  - The brand mark is built from a coloured table cell and a border-radius dot,
+    NOT an image. Most clients block remote images by default, and a broken-image
+    icon at the top of a sign-in email reads as phishing. Outlook squares off the
+    corners; that is the whole cost of having no image dependency.
+  - The wordmark is live text so it renders even with images off.
+  - Bricolage Grotesque only loads in clients that honour @import (Apple Mail,
+    iOS). Everything else falls down the stack to a system sans. Do not let the
+    design depend on it.
+
+  Supabase substitutes {{ .ConfirmationURL }}. Deliberately NOT using {{ .Token }}:
+  the app has no code-entry UI (frontend/app/signin/page.tsx), so offering a code
+  would promise a way in that does not exist.
+-->
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="x-apple-disable-message-reformatting" />
+    <meta name="color-scheme" content="light" />
+    <meta name="supported-color-schemes" content="light" />
+    <title>Your WhoDoYaUse sign-in link</title>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@700;800&family=Plus+Jakarta+Sans:wght@400;600;700&display=swap');
+
+      /* Outlook ignores this; every client that reads it gets slightly better
+         line-breaking on the headline. */
+      body { margin: 0 !important; padding: 0 !important; width: 100% !important; }
+      table { border-collapse: collapse !important; }
+      a { text-decoration: none; }
+
+      @media only screen and (max-width: 620px) {
+        .wrap { width: 100% !important; }
+        .pad { padding-left: 24px !important; padding-right: 24px !important; }
+        .headline { font-size: 28px !important; line-height: 34px !important; }
+        .cta { display: block !important; width: auto !important; }
+      }
+    </style>
+  </head>
+
+  <body style="margin:0; padding:0; width:100%; background-color:#102e28;">
+    <!-- Preheader: the grey line the inbox shows next to the subject. Without one,
+         clients scrape the first visible text, which here would be the wordmark. -->
+    <div
+      style="display:none; font-size:1px; line-height:1px; max-height:0; max-width:0; opacity:0; overflow:hidden; mso-hide:all;"
+    >
+      Your sign-in link for WhoDoYaUse — works once, expires in an hour.
+      &#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;
+    </div>
+
+    <table
+      role="presentation"
+      cellpadding="0"
+      cellspacing="0"
+      border="0"
+      width="100%"
+      style="background-color:#102e28;"
+    >
+      <tr>
+        <td align="center" style="padding:32px 12px 40px 12px;">
+          <table
+            role="presentation"
+            cellpadding="0"
+            cellspacing="0"
+            border="0"
+            width="600"
+            class="wrap"
+            style="width:600px; max-width:600px;"
+          >
+            <!-- Brand row, sitting on the green field above the card -->
+            <tr>
+              <td align="center" style="padding:8px 0 24px 0;">
+                <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                  <tr>
+                    <td
+                      width="34"
+                      height="34"
+                      align="center"
+                      valign="middle"
+                      style="width:34px; height:34px; background-color:#15493f; border-radius:11px;"
+                    >
+                      <div
+                        style="width:12px; height:12px; background-color:#ffc23d; border-radius:12px; font-size:0; line-height:0;"
+                      >
+                        &nbsp;
+                      </div>
+                    </td>
+                    <td style="width:10px;">&nbsp;</td>
+                    <td
+                      valign="middle"
+                      style="font-family:'Bricolage Grotesque','Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:21px; font-weight:800; letter-spacing:-0.2px; color:#ffffff;"
+                    >
+                      WhoDoYaUse
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+
+            <!-- Cream card -->
+            <tr>
+              <td
+                style="background-color:#faf6ef; border-radius:14px; border:1px solid #d4e1d8;"
+              >
+                <table
+                  role="presentation"
+                  cellpadding="0"
+                  cellspacing="0"
+                  border="0"
+                  width="100%"
+                >
+                  <tr>
+                    <td class="pad" style="padding:40px 40px 0 40px;">
+                      <h1
+                        class="headline"
+                        style="margin:0 0 14px 0; font-family:'Bricolage Grotesque',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:32px; line-height:38px; font-weight:800; letter-spacing:-0.5px; color:#14241e;"
+                      >
+                        Your sign-in link
+                      </h1>
+                      <p
+                        style="margin:0 0 28px 0; font-family:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:16px; line-height:26px; color:#5f6d64;"
+                      >
+                        Tap the button to finish signing in. Open it on the same device you
+                        asked from — that's where the link finishes the job.
+                      </p>
+                    </td>
+                  </tr>
+
+                  <!-- CTA. Gold is spent here and nowhere else in this email. -->
+                  <tr>
+                    <td class="pad" align="left" style="padding:0 40px 28px 40px;">
+                      <!--[if mso]>
+                        <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word"
+                          href="{{ .ConfirmationURL }}" style="height:52px;v-text-anchor:middle;width:230px;" arcsize="50%" stroke="f" fillcolor="#ffc23d">
+                          <w:anchorlock/>
+                          <center style="color:#1a1a1a;font-family:'Segoe UI',Arial,sans-serif;font-size:16px;font-weight:bold;">Sign in to WhoDoYaUse</center>
+                        </v:roundrect>
+                      <![endif]-->
+                      <!--[if !mso]><!-- -->
+                      <a
+                        href="{{ .ConfirmationURL }}"
+                        class="cta"
+                        style="display:inline-block; background-color:#ffc23d; color:#1a1a1a; font-family:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:16px; font-weight:700; line-height:20px; padding:16px 34px; border-radius:999px; text-align:center;"
+                      >
+                        Sign in to WhoDoYaUse
+                      </a>
+                      <!--<![endif]-->
+                    </td>
+                  </tr>
+
+                  <!-- Plain-URL fallback: some corporate gateways rewrite or strip the
+                       button's href, and clients that render links as plain text leave
+                       the user with nothing to copy otherwise. -->
+                  <tr>
+                    <td class="pad" style="padding:0 40px 32px 40px;">
+                      <p
+                        style="margin:0 0 8px 0; font-family:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:13px; line-height:20px; color:#5f6d64;"
+                      >
+                        Button not working? Paste this into your browser:
+                      </p>
+                      <p style="margin:0; font-size:13px; line-height:20px; word-break:break-all;">
+                        <a
+                          href="{{ .ConfirmationURL }}"
+                          style="font-family:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:13px; line-height:20px; color:#15493f; text-decoration:underline; word-break:break-all;"
+                          >{{ .ConfirmationURL }}</a
+                        >
+                      </p>
+                    </td>
+                  </tr>
+
+                  <tr>
+                    <td class="pad" style="padding:0 40px;">
+                      <div style="height:1px; background-color:#d4e1d8; font-size:0; line-height:0;">
+                        &nbsp;
+                      </div>
+                    </td>
+                  </tr>
+
+                  <tr>
+                    <td class="pad" style="padding:24px 40px 36px 40px;">
+                      <p
+                        style="margin:0; font-family:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:13px; line-height:21px; color:#5f6d64;"
+                      >
+                        This link works once and expires in an hour. If you didn't ask to sign
+                        in, you can ignore this email — nobody gets in without the link.
+                      </p>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+
+            <!-- Footer on the green field -->
+            <tr>
+              <td align="center" style="padding:26px 20px 0 20px;">
+                <p
+                  style="margin:0 0 6px 0; font-family:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:13px; line-height:20px; color:#9fb6ab;"
+                >
+                  Recommended by your neighbors, not algorithms.
+                </p>
+                <p
+                  style="margin:0; font-family:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:13px; line-height:20px; color:#7f968b;"
+                >
+                  <a href="https://whodoyause.com" style="color:#9fb6ab; text-decoration:underline;"
+                    >whodoyause.com</a
+                  >
+                </p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>
