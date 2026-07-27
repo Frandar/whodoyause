@@ -114,9 +114,12 @@
 
             <!-- Cream card -->
             <tr>
-              <td
-                style="background-color:#faf6ef; border-radius:14px; border:1px solid #d4e1d8;"
-              >
+              <!-- No border on purpose. border-radius is ignored on a collapsed-border
+                   table, so a 1px border here draws a SQUARE corner outside the rounded
+                   background — the corner clips round, the border does not follow it.
+                   The cream card already separates cleanly from the green field, so the
+                   border was buying nothing and costing a visible sharp edge. -->
+              <td style="background-color:#faf6ef; border-radius:14px;">
                 <table
                   role="presentation"
                   cellpadding="0"
