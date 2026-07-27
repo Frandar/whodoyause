@@ -89,6 +89,19 @@ BUCKET=... DIST_ID=... ./scripts/deploy.sh
 CI (`.github/workflows/ci.yml`) runs pytest, lint, typecheck, build and the axe gate on
 every PR.
 
+## Domain
+
+The site is served at **https://whodoyause.com**. `infra/hosting.yaml` owns the whole
+chain: the ACM certificate (DNS-validated against the Route 53 zone the registrar created),
+the CloudFront aliases, and the apex + `www` alias records. `www` 301s to the apex in the
+CloudFront viewer-request function; `http` 301s to `https` via `redirect-to-https`.
+
+One canonical origin matters beyond tidiness: the Lambda's Function URL allows exactly one
+CORS origin (`CorsAllowOrigin` = `https://whodoyause.com`). The distribution's own
+`*.cloudfront.net` address still serves the HTML, but API calls from it are blocked — so
+don't hand that URL out. The same origin must be listed in Supabase Auth's **Site URL** and
+**Redirect URLs**, or magic links bounce back to the wrong host.
+
 ## Moderation
 
 Content removal (`DELETE /recommendations/{id}`) is gated on the `MODERATOR_USER_IDS` Lambda

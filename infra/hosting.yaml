@@ -2,8 +2,9 @@ AWSTemplateFormatVersion: '2010-09-09'
 
 Description: >
   WhoDoYaUse frontend hosting — private S3 bucket served via CloudFront with an
-  Origin Access Control (OAC). Separate stack from the backend Lambda so the
-  frontend and backend have independent lifecycles.
+  Origin Access Control (OAC), fronted by the whodoyause.com custom domain.
+  Separate stack from the backend Lambda so the frontend and backend have
+  independent lifecycles.
 
 Parameters:
   BucketName:
@@ -12,8 +13,37 @@ Parameters:
     Description: >
       Globally-unique S3 bucket name for the static site. Override if this name
       is already taken.
+  DomainName:
+    Type: String
+    Default: whodoyause.com
+    Description: >
+      Apex domain. This is the canonical origin — www redirects here, and it is
+      what NEXT_PUBLIC_SITE_URL and the Lambda's CorsAllowOrigin must be set to.
+  HostedZoneId:
+    Type: String
+    Default: Z0688328UYJ1HCG6JV5C
+    Description: >
+      Route 53 public hosted zone for DomainName. Created by the registrar when
+      the domain was bought; the registrar's nameservers already point at it.
 
 Resources:
+  # CloudFront only accepts certificates from us-east-1, regardless of where the
+  # rest of the stack lives. This one is DNS-validated: because DomainValidationOptions
+  # names the hosted zone, CloudFormation writes the _acme CNAMEs itself and blocks
+  # the stack update until ACM issues. No manual copy-paste of validation records.
+  Certificate:
+    Type: AWS::CertificateManager::Certificate
+    Properties:
+      DomainName: !Ref DomainName
+      SubjectAlternativeNames:
+        - !Sub 'www.${DomainName}'
+      ValidationMethod: DNS
+      DomainValidationOptions:
+        - DomainName: !Ref DomainName
+          HostedZoneId: !Ref HostedZoneId
+        - DomainName: !Sub 'www.${DomainName}'
+          HostedZoneId: !Ref HostedZoneId
+
   # Rewrites clean paths to their .html files before S3 sees the request.
   # Without this, /browse → S3 key "browse" (404/403) → falls back to index.html.
   # Next.js static export emits browse.html, recommend.html, etc.
@@ -23,25 +53,57 @@ Resources:
       Name: whodoyause-url-rewrite
       AutoPublish: true
       FunctionConfig:
-        Comment: Append .html for Next.js static export paths
+        Comment: Redirect www to apex, then append .html for static-export paths
         Runtime: cloudfront-js-1.0
-      FunctionCode: |
+      FunctionCode: !Sub |
         function handler(event) {
-          var uri = event.request.uri;
+          var request = event.request;
+
+          // One canonical host. www.${DomainName} is on the certificate and the
+          // distribution purely so it resolves — it never serves content, it
+          // 301s to the apex, preserving path and query string.
+          var host = request.headers.host && request.headers.host.value;
+          if (host === 'www.${DomainName}') {
+            var pairs = [];
+            for (var key in request.querystring) {
+              var q = request.querystring[key];
+              // Keys and values arrive STILL PERCENT-ENCODED, so they are copied
+              // through verbatim. Running encodeURIComponent over them here turned
+              // ?category=Lawn%2FLandscaping into Lawn%252FLandscaping and broke
+              // every shared category link that went through www.
+              if (q.multiValue) {
+                for (var m = 0; m < q.multiValue.length; m++) {
+                  pairs.push(key + '=' + q.multiValue[m].value);
+                }
+              } else {
+                pairs.push(key + '=' + q.value);
+              }
+            }
+            var search = pairs.length ? '?' + pairs.join('&') : '';
+            return {
+              statusCode: 301,
+              statusDescription: 'Moved Permanently',
+              headers: {
+                location: { value: 'https://${DomainName}' + request.uri + search }
+              }
+            };
+          }
+
+          var uri = request.uri;
           // Extensionless files emitted by the Next build that are NOT pages —
           // appending .html to these would 404 them. The OG image is the one
           // that matters: break it and every Facebook share loses its card.
           var ASSET_ROUTES = ['/opengraph-image', '/twitter-image', '/icon', '/apple-icon'];
           for (var i = 0; i < ASSET_ROUTES.length; i++) {
-            if (uri === ASSET_ROUTES[i]) return event.request;
+            if (uri === ASSET_ROUTES[i]) return request;
           }
           // Root is handled by DefaultRootObject. Skip anything with a dot
           // (assets, _next/, robots.txt, sitemap.xml). Append .html to clean
           // app routes.
           if (uri !== '/' && uri.indexOf('.') === -1) {
-            event.request.uri = uri + '.html';
+            request.uri = uri + '.html';
           }
-          return event.request;
+          return request;
         }
 
   # Private bucket — never public. CloudFront reaches it only via the OAC below.
@@ -73,6 +135,9 @@ Resources:
       DistributionConfig:
         Enabled: true
         Comment: WhoDoYaUse frontend
+        Aliases:
+          - !Ref DomainName
+          - !Sub 'www.${DomainName}'
         DefaultRootObject: index.html
         HttpVersion: http2and3
         PriceClass: PriceClass_100          # cheapest: US / Canada / Europe edges
@@ -108,7 +173,9 @@ Resources:
             ResponsePagePath: /404.html
             ErrorCachingMinTTL: 10
         ViewerCertificate:
-          CloudFrontDefaultCertificate: true
+          AcmCertificateArn: !Ref Certificate
+          SslSupportMethod: sni-only
+          MinimumProtocolVersion: TLSv1.2_2021
 
   # Grant CloudFront (this distribution only) read access to the bucket.
   HostingBucketPolicy:
@@ -128,6 +195,41 @@ Resources:
               StringEquals:
                 AWS:SourceArn: !Sub 'arn:aws:cloudfront::${AWS::AccountId}:distribution/${Distribution.Id}'
 
+  # Alias records, not CNAMEs: a CNAME is illegal at the zone apex, and aliases
+  # are free to query. Z2FDTNDATAQYW2 is CloudFront's fixed hosted zone id — the
+  # same constant for every distribution in every region, not a value to look up.
+  DnsRecords:
+    Type: AWS::Route53::RecordSetGroup
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      # Repetitive on purpose: CloudFormation does not support YAML anchors, so
+      # the alias target is spelled out four times (v4 + v6, apex + www).
+      RecordSets:
+        - Name: !Ref DomainName
+          Type: A
+          AliasTarget:
+            DNSName: !GetAtt Distribution.DomainName
+            HostedZoneId: Z2FDTNDATAQYW2
+            EvaluateTargetHealth: false
+        - Name: !Ref DomainName
+          Type: AAAA
+          AliasTarget:
+            DNSName: !GetAtt Distribution.DomainName
+            HostedZoneId: Z2FDTNDATAQYW2
+            EvaluateTargetHealth: false
+        - Name: !Sub 'www.${DomainName}'
+          Type: A
+          AliasTarget:
+            DNSName: !GetAtt Distribution.DomainName
+            HostedZoneId: Z2FDTNDATAQYW2
+            EvaluateTargetHealth: false
+        - Name: !Sub 'www.${DomainName}'
+          Type: AAAA
+          AliasTarget:
+            DNSName: !GetAtt Distribution.DomainName
+            HostedZoneId: Z2FDTNDATAQYW2
+            EvaluateTargetHealth: false
+
 Outputs:
   BucketName:
     Description: S3 bucket name — pass as BUCKET to scripts/deploy.sh
@@ -135,6 +237,13 @@ Outputs:
   DistributionId:
     Description: CloudFront distribution ID — pass as DIST_ID to scripts/deploy.sh
     Value: !Ref Distribution
+  SiteUrl:
+    Description: >
+      Canonical public URL — this is what NEXT_PUBLIC_SITE_URL and the Lambda's
+      CorsAllowOrigin must be set to.
+    Value: !Sub 'https://${DomainName}'
   CloudFrontUrl:
-    Description: Frontend URL — use as the Lambda CorsAllowOrigin and NEXT_PUBLIC site URL
+    Description: >
+      The distribution's own domain. Still serves the site, but is no longer the
+      public address and is NOT in the API's CORS allow-list.
     Value: !Sub 'https://${Distribution.DomainName}'

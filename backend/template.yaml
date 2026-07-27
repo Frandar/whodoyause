@@ -27,7 +27,11 @@ Parameters:
     Description: Supabase project URL (e.g. https://xxxx.supabase.co)
   CorsAllowOrigin:
     Type: String
-    Description: CloudFront distribution URL (e.g. https://dxxxx.cloudfront.net)
+    Description: >
+      The site's canonical public origin — https://whodoyause.com. Exactly one
+      origin: www 301s to the apex at CloudFront, so the browser only ever calls
+      this API from the apex. The *.cloudfront.net domain still serves the site
+      but is deliberately NOT allowed here.
   ModeratorUserIds:
     Type: String
     Default: ''
