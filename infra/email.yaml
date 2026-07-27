@@ -152,7 +152,16 @@ Resources:
                 Action:
                   - ses:SendRawEmail
                   - ses:SendEmail
-                Resource: !Sub 'arn:aws:ses:${AWS::Region}:${AWS::AccountId}:identity/${DomainName}'
+                # BOTH ARNs are required, and the second one is easy to miss.
+                # Because the identity carries a default configuration set, SES
+                # authorizes every send against the configuration set as well as
+                # the identity — granting only the identity gets a 554 "not
+                # authorized ... on resource .../configuration-set/..." at DATA
+                # time, i.e. after AUTH has already succeeded, which makes it look
+                # like a credentials problem when it is not.
+                Resource:
+                  - !Sub 'arn:aws:ses:${AWS::Region}:${AWS::AccountId}:identity/${DomainName}'
+                  - !Sub 'arn:aws:ses:${AWS::Region}:${AWS::AccountId}:configuration-set/${ConfigurationSet}'
 
   SmtpAccessKey:
     Type: AWS::IAM::AccessKey
