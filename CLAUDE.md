@@ -117,5 +117,22 @@ Gate 1 passed and deployed.
 - Backend tests: cd backend && uv run pytest
 - Backend deploy: cd backend && uv export --no-hashes --no-dev -o requirements.txt && sam build --use-container && sam deploy
 - Provision frontend hosting (once): aws cloudformation deploy --template-file infra/hosting.yaml --stack-name whodoyause-hosting
+- Provision email (once): aws cloudformation deploy --template-file infra/email.yaml --stack-name whodoyause-email --capabilities CAPABILITY_NAMED_IAM
+- Print SMTP credentials for Supabase: ./scripts/ses-smtp-credentials.sh
 - Frontend dev: cd frontend && pnpm dev
 - Frontend deploy: BUCKET=... DIST_ID=... ./scripts/deploy.sh
+
+## Auth email (magic links)
+
+Supabase's built-in mailer is capped at a few emails per hour and is not for production.
+Magic links go out through **AWS SES** instead: `infra/email.yaml` owns the verified
+`whodoyause.com` identity (Easy DKIM), the `mail.whodoyause.com` MAIL FROM subdomain, the
+DMARC record, and a send-only IAM user. Supabase is pointed at it via Auth → SMTP Settings.
+
+Two things that bite:
+
+- The SMTP password is **not** the IAM secret key — it's that secret run through a
+  region-specific SigV4 derivation. `scripts/ses-smtp-credentials.sh` does it.
+- Custom SMTP alone does **not** raise the cap. Supabase's own
+  Authentication → Rate Limits → "Rate limit for sending emails" is a separate setting and
+  stays at its low default until you change it.

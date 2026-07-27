@@ -1,0 +1,187 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: >
+  WhoDoYaUse transactional email — an SES domain identity for whodoyause.com
+  plus an SMTP user, so Supabase Auth sends magic links through SES instead of
+  its built-in demo mailer (which is capped at a few emails per hour and is not
+  meant for production). Separate stack from hosting and the API: email has its
+  own lifecycle and is deliberately not something a frontend deploy can break.
+
+  Deploy into us-east-1 — the account already has SES production access there.
+
+Parameters:
+  DomainName:
+    Type: String
+    Default: whodoyause.com
+    Description: >
+      The sending domain. Must match the apex domain in infra/hosting.yaml so
+      magic-link emails come from the same brand the link points at.
+  HostedZoneId:
+    Type: String
+    Default: Z0688328UYJ1HCG6JV5C
+    Description: >
+      Route 53 public hosted zone for DomainName — the same zone hosting.yaml
+      writes the site's alias records into. CloudFormation writes the DKIM,
+      MAIL FROM and DMARC records here directly; nothing is copy-pasted by hand.
+  MailFromSubdomain:
+    Type: String
+    Default: mail
+    Description: >
+      Subdomain used as the SMTP envelope sender (the Return-Path). Without a
+      custom MAIL FROM, bounces come back to amazonses.com and SPF authenticates
+      against Amazon's domain rather than ours, which weakens DMARC alignment.
+  SenderAddress:
+    Type: String
+    Default: no-reply@whodoyause.com
+    Description: >
+      The From address on magic-link emails. no-reply by default because no
+      mailbox exists behind it — an address that invites replies into a void is
+      worse than one that doesn't. Point this at a real inbox once there is one.
+  DmarcReportEmail:
+    Type: String
+    Default: ''
+    Description: >
+      Optional mailbox for aggregate DMARC reports. Leave empty to publish a
+      monitoring-only DMARC record with no reporting address.
+
+Conditions:
+  HasDmarcReportEmail: !Not [!Equals [!Ref DmarcReportEmail, '']]
+
+Resources:
+  # Reputation metrics are the reason this exists: without a configuration set,
+  # bounce and complaint rates are invisible until SES suspends sending. With
+  # one, they are CloudWatch metrics you can alarm on before that happens.
+  ConfigurationSet:
+    Type: AWS::SES::ConfigurationSet
+    Properties:
+      Name: whodoyause-transactional
+      ReputationOptions:
+        ReputationMetricsEnabled: true
+      DeliveryOptions:
+        TlsPolicy: REQUIRE
+
+  # Easy DKIM: SES generates the key pair and hands back three CNAME targets.
+  # Verification completes when those records resolve, which is why the zone is
+  # managed here rather than in the console.
+  EmailIdentity:
+    Type: AWS::SES::EmailIdentity
+    Properties:
+      EmailIdentity: !Ref DomainName
+      DkimSigningAttributes:
+        NextSigningKeyLength: RSA_2048_BIT
+      MailFromAttributes:
+        MailFromDomain: !Sub '${MailFromSubdomain}.${DomainName}'
+        # REJECT_MESSAGE, not USE_DEFAULT_VALUE: if the MAIL FROM MX record ever
+        # disappears, fail loudly instead of silently falling back to
+        # amazonses.com and breaking DMARC alignment for every magic link.
+        BehaviorOnMxFailure: REJECT_MESSAGE
+      ConfigurationSetAttributes:
+        ConfigurationSetName: !Ref ConfigurationSet
+
+  # The token *names* come back fully qualified (xxx._domainkey.whodoyause.com),
+  # so these are used as-is rather than !Sub'd onto the domain.
+  DkimRecords:
+    Type: AWS::Route53::RecordSetGroup
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      RecordSets:
+        - Name: !GetAtt EmailIdentity.DkimDNSTokenName1
+          Type: CNAME
+          TTL: '1800'
+          ResourceRecords:
+            - !GetAtt EmailIdentity.DkimDNSTokenValue1
+        - Name: !GetAtt EmailIdentity.DkimDNSTokenName2
+          Type: CNAME
+          TTL: '1800'
+          ResourceRecords:
+            - !GetAtt EmailIdentity.DkimDNSTokenValue2
+        - Name: !GetAtt EmailIdentity.DkimDNSTokenName3
+          Type: CNAME
+          TTL: '1800'
+          ResourceRecords:
+            - !GetAtt EmailIdentity.DkimDNSTokenValue3
+
+  # SPF and the bounce MX live on the MAIL FROM subdomain, never the apex — the
+  # apex TXT record is a scarce shared slot and this keeps email DNS out of it.
+  MailFromRecords:
+    Type: AWS::Route53::RecordSetGroup
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      RecordSets:
+        - Name: !Sub '${MailFromSubdomain}.${DomainName}'
+          Type: MX
+          TTL: '1800'
+          ResourceRecords:
+            - !Sub '10 feedback-smtp.${AWS::Region}.amazonses.com'
+        - Name: !Sub '${MailFromSubdomain}.${DomainName}'
+          Type: TXT
+          TTL: '1800'
+          ResourceRecords:
+            - '"v=spf1 include:amazonses.com ~all"'
+
+  # p=none is monitoring-only on purpose. Quarantine/reject belongs after a few
+  # weeks of clean reports, not on day one — a misconfigured policy silently
+  # sends every magic link to spam.
+  DmarcRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Sub '_dmarc.${DomainName}'
+      Type: TXT
+      TTL: '1800'
+      ResourceRecords:
+        - !If
+          - HasDmarcReportEmail
+          - !Sub '"v=DMARC1; p=none; rua=mailto:${DmarcReportEmail}"'
+          - '"v=DMARC1; p=none"'
+
+  # Supabase needs long-lived SMTP credentials, and SMTP credentials are just an
+  # IAM access key with the secret run through a region-specific derivation.
+  # Hence a dedicated user: it can send as this one identity and do nothing else,
+  # so leaking it from the Supabase dashboard costs a key rotation, not an account.
+  SmtpUser:
+    Type: AWS::IAM::User
+    Properties:
+      UserName: !Sub 'whodoyause-ses-smtp'
+      Policies:
+        - PolicyName: SendAsWhoDoYaUse
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ses:SendRawEmail
+                  - ses:SendEmail
+                Resource: !Sub 'arn:aws:ses:${AWS::Region}:${AWS::AccountId}:identity/${DomainName}'
+
+  SmtpAccessKey:
+    Type: AWS::IAM::AccessKey
+    Properties:
+      UserName: !Ref SmtpUser
+
+Outputs:
+  SmtpHost:
+    Description: SMTP endpoint for the Supabase Auth custom SMTP settings
+    Value: !Sub 'email-smtp.${AWS::Region}.amazonaws.com'
+  SmtpPort:
+    Description: >
+      587 (STARTTLS) — Supabase's SMTP client expects this. 465 also works.
+    Value: '587'
+  SmtpUsername:
+    Description: SMTP username — the IAM access key id, used verbatim
+    Value: !Ref SmtpAccessKey
+  SmtpSecretAccessKey:
+    Description: >
+      NOT the SMTP password. The password is this secret run through the SES
+      SigV4 derivation for this region — run scripts/ses-smtp-credentials.sh,
+      which reads this output and prints the real password.
+    Value: !GetAtt SmtpAccessKey.SecretAccessKey
+  SenderEmail:
+    Description: From address to enter in the Supabase SMTP settings
+    Value: !Ref SenderAddress
+  MailFromDomain:
+    Description: Envelope sender domain (Return-Path) — bounces land here
+    Value: !Sub '${MailFromSubdomain}.${DomainName}'
+  ConfigurationSetName:
+    Description: SES configuration set carrying reputation metrics for these sends
+    Value: !Ref ConfigurationSet
